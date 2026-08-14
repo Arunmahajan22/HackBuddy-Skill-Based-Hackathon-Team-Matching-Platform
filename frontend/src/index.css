@@ -1,0 +1,150 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-slate-200/80 dark:border-white/10;
+  }
+  
+  html {
+    @apply bg-slate-50 text-slate-900 antialiased dark:bg-ink-950 dark:text-slate-100 font-sans;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  body {
+    @apply m-0 min-w-[320px] bg-slate-50 font-sans selection:bg-brand-500 selection:text-white dark:bg-ink-950;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight text-slate-900 dark:text-white;
+  }
+
+  button, input, select, textarea {
+    font-family: inherit;
+  }
+
+  /* Sleek custom scrollbars */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-slate-300 dark:bg-slate-700/60 hover:bg-slate-400 dark:hover:bg-slate-600;
+  }
+}
+
+@layer components {
+  /* Big Tech Glass Card */
+  .glass-card {
+    @apply relative rounded-2xl border border-slate-200/90 bg-white/90 shadow-card backdrop-blur-xl transition-all duration-200 hover:border-slate-300 dark:border-white/[0.08] dark:bg-ink-900/85 dark:shadow-none dark:hover:border-white/15;
+  }
+
+  .glass-panel {
+    @apply rounded-xl border border-slate-200/70 bg-white/70 backdrop-blur-md dark:border-white/[0.06] dark:bg-white/[0.03];
+  }
+
+  .stat-card {
+    @apply relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-card dark:border-white/10 dark:bg-ink-900/90;
+  }
+
+  /* Form Elements */
+  .field-label {
+    @apply block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300;
+  }
+
+  .field-input {
+    @apply mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-normal text-slate-900 shadow-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-ink-950/60 dark:text-white dark:placeholder:text-slate-500 dark:hover:border-white/20 dark:focus:border-brand-400 dark:focus:ring-brand-400/20;
+  }
+
+  .field-error {
+    @apply mt-1.5 text-xs font-medium text-rose-600 dark:text-rose-400;
+  }
+
+  /* Buttons */
+  .primary-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-brand-500 to-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/25 transition-all duration-150 hover:from-brand-600 hover:to-brand-700 hover:shadow-glow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none;
+  }
+
+  .secondary-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200/90 bg-white/90 px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-150 hover:border-brand-300 hover:bg-slate-50 hover:text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/[0.05] dark:text-slate-200 dark:hover:border-brand-400/40 dark:hover:bg-white/[0.09] dark:hover:text-white;
+  }
+
+  .icon-button {
+    @apply grid size-9 place-items-center rounded-xl border border-transparent text-slate-500 transition-all duration-150 hover:border-slate-200 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 active:scale-95 dark:text-slate-400 dark:hover:border-white/10 dark:hover:bg-white/10 dark:hover:text-white;
+  }
+
+  /* Navigation Link */
+  .nav-link {
+    @apply inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold text-slate-600 transition-all duration-150 hover:bg-slate-100/80 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-300 dark:hover:bg-white/[0.08] dark:hover:text-white;
+  }
+
+  .nav-link.active {
+    @apply bg-brand-500/10 text-brand-600 shadow-sm dark:bg-brand-500/20 dark:text-brand-400;
+  }
+
+  /* Badges & Tags */
+  .eyebrow {
+    @apply text-[11px] font-bold uppercase tracking-[0.2em] text-brand-600 dark:text-brand-400;
+  }
+
+  .skill-badge {
+    @apply inline-flex items-center rounded-lg border border-brand-500/15 bg-brand-500/[0.08] px-2.5 py-1 text-xs font-semibold text-brand-700 transition-colors dark:border-brand-400/20 dark:bg-brand-400/10 dark:text-brand-300;
+  }
+
+  .status-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
+
+  /* Decision Actions */
+  .action-accept {
+    @apply inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-emerald-700 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .action-reject {
+    @apply inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-500/10 px-3.5 py-2 text-xs font-bold text-rose-700 transition-all hover:bg-rose-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-500/20 dark:text-rose-300;
+  }
+}
+
+/* Animations */
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(1.5rem) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-up {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in-right 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out both;
+}
+
+.animate-scale-up {
+  animation: scale-up 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
