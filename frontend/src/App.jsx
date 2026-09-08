@@ -6,6 +6,8 @@ import DashboardPage from './pages/DashboardPage';
 import ExplorePage from './pages/ExplorePage';
 import CreateTeamPage from './pages/CreateTeamPage';
 import ProfilePage from './pages/ProfilePage';
+import ChatPage from './pages/ChatPage';
+import MatchesPage from './pages/MatchesPage';
 
 /**
  * Route protection wrapper.
@@ -83,6 +85,11 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/chat"
+        element={<ProtectedRoute><ChatPage /></ProtectedRoute>}
+      />
+      <Route path="/matches" element={<ProtectedRoute><MatchesPage /></ProtectedRoute>} />
       <Route
         path="*"
         element={<Navigate to={isAuthenticated ? '/app' : '/login'} replace />}

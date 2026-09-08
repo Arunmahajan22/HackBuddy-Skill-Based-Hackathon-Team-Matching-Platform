@@ -1,6 +1,6 @@
 const express = require('express');
 const { body, param, query } = require('express-validator');
-const { createTeam, getTeams, getMyTeams, getTeamById } = require('../controllers/teamController');
+const { createTeam, getTeams, getMyTeams, getJoinedTeams, getTeamById } = require('../controllers/teamController');
 const { protect } = require('../middlewares/authMiddleware');
 const { validateRequest } = require('../middlewares/validateMiddleware');
 const { actionRateLimiter } = require('../middlewares/rateLimitMiddleware');
@@ -23,6 +23,7 @@ router.get(
 
 // Get teams created by the logged-in user
 router.get('/mine', protect, getMyTeams);
+router.get('/joined', protect, getJoinedTeams);
 
 // Create a new team
 router.post(

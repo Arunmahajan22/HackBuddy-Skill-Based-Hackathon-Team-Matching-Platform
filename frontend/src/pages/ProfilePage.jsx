@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Code2, Save, UserRound, AlertCircle, Sparkles, ExternalLink, X, Check } from 'lucide-react';
+import { Code2, Save, AlertCircle, Sparkles, ExternalLink, X, UsersRound, Plus } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import api from '../lib/api';
 import { Layout } from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
@@ -25,6 +26,7 @@ export default function ProfilePage() {
   const [newSkillInput, setNewSkillInput] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [teams, setTeams] = useState([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -43,6 +45,7 @@ export default function ProfilePage() {
     };
 
     fetchProfile();
+    api.get('/teams/joined').then(({ data }) => { if (isMounted) setTeams(data.teams || []); }).catch(() => {});
     return () => {
       isMounted = false;
     };
@@ -80,6 +83,10 @@ export default function ProfilePage() {
     });
   };
 
+  const updateProject = (index, field, value) => setForm({ ...form, projects: (form.projects || []).map((project, projectIndex) => projectIndex === index ? { ...project, [field]: value } : project) });
+  const addProject = () => setForm({ ...form, projects: [...(form.projects || []), { title: '', description: '', url: '', technologies: [] }] });
+  const removeProject = (index) => setForm({ ...form, projects: (form.projects || []).filter((_, projectIndex) => projectIndex !== index) });
+
   const handleKeyDownSkill = (e) => {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
@@ -101,6 +108,15 @@ export default function ProfilePage() {
         github: form.github?.trim(),
         experienceLevel: form.experienceLevel,
         skills: form.skills || [],
+        interests: form.interests || [],
+        preferredRoles: form.preferredRoles || [],
+        avatarUrl: form.avatarUrl?.trim(),
+        linkedin: form.linkedin?.trim(),
+        portfolio: form.portfolio?.trim(),
+        hackathonExperience: Number(form.hackathonExperience || 0),
+        availability: form.availability || 'open',
+        preferredTeamSize: Number(form.preferredTeamSize || 4),
+        projects: (form.projects || []).map((project) => ({ ...project, technologies: Array.isArray(project.technologies) ? project.technologies : String(project.technologies || '').split(',').map((item) => item.trim()).filter(Boolean) })).filter((project) => project.title?.trim()),
       };
 
       const { data } = await api.patch('/users/me', payload);
@@ -129,7 +145,9 @@ export default function ProfilePage() {
     if (form.skills?.length > 0) score += 25;
     if (form.bio) score += 20;
     if (form.github) score += 15;
-    return score;
+    if (form.projects?.length) score += 10;
+    if (form.linkedin || form.portfolio) score += 10;
+    return Math.min(100, score);
   };
 
   const strength = calculateStrength();
@@ -142,9 +160,7 @@ export default function ProfilePage() {
           <div className="border-b border-slate-200/80 bg-brand-500/[0.06] p-6 dark:border-white/10 sm:p-8">
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
               <div className="flex items-center gap-4">
-                <span className="grid size-14 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 font-display text-xl font-bold text-white shadow-md shadow-brand-500/25">
-                  {form.name?.[0]?.toUpperCase() || 'U'}
-                </span>
+                {form.avatarUrl ? <img src={form.avatarUrl} alt="Profile avatar" className="size-14 rounded-2xl object-cover shadow-md" /> : <span className="grid size-14 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 font-display text-xl font-bold text-white shadow-md shadow-brand-500/25">{form.name?.[0]?.toUpperCase() || 'U'}</span>}
                 <div>
                   <span className="eyebrow block">Maker Profile</span>
                   <h1 className="mt-0.5 font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
@@ -184,6 +200,9 @@ export default function ProfilePage() {
               </div>
             )}
 
+            <section>
+            <h2 className="mb-3 font-display text-base font-bold">Profile header</h2>
+            <div className="mb-4"><label htmlFor="profile-avatar" className="field-label">Profile photo URL</label><input id="profile-avatar" className="field-input" name="avatarUrl" value={form.avatarUrl || ''} onChange={updateField} placeholder="https://images.example.com/avatar.jpg" /></div>
             {/* Name and Branch */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
@@ -211,7 +230,9 @@ export default function ProfilePage() {
                 />
               </div>
             </div>
+            </section>
 
+            <section><h2 className="mb-3 font-display text-base font-bold">Experience & availability</h2>
             {/* Year and Experience */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
@@ -250,7 +271,11 @@ export default function ProfilePage() {
                 </select>
               </div>
             </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-3"><div><label className="field-label">Hackathons completed</label><input className="field-input" type="number" min="0" max="100" name="hackathonExperience" value={form.hackathonExperience ?? 0} onChange={updateField} /></div><div><label className="field-label">Availability</label><select className="field-input" name="availability" value={form.availability || 'open'} onChange={updateField}><option value="open">Open to collaborate</option><option value="weekends">Weekends</option><option value="evenings">Evenings</option><option value="limited">Limited</option><option value="unavailable">Unavailable</option></select></div><div><label className="field-label">Ideal team size</label><input className="field-input" type="number" min="2" max="20" name="preferredTeamSize" value={form.preferredTeamSize ?? 4} onChange={updateField} /></div></div>
+            </section>
 
+            <section>
+            <h2 className="mb-3 font-display text-base font-bold">Skills</h2>
             {/* Interactive Skills Chip Manager */}
             <div>
               <label htmlFor="profile-skills-input" className="field-label">
@@ -315,7 +340,23 @@ export default function ProfilePage() {
                 ))}
               </div>
             </div>
+            </section>
 
+            <section><h2 className="mb-3 font-display text-base font-bold">Hackathon interests & preferred role</h2>
+            {/* Bio */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="profile-interests" className="field-label">Hackathon interests <span className="font-normal text-slate-400 normal-case">(comma separated)</span></label>
+                <input id="profile-interests" className="field-input" value={(form.interests || []).join(', ')} onChange={(event) => setForm({ ...form, interests: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="AI, climate, fintech" />
+              </div>
+              <div>
+                <label htmlFor="profile-roles" className="field-label">Preferred roles <span className="font-normal text-slate-400 normal-case">(comma separated)</span></label>
+                <input id="profile-roles" className="field-input" value={(form.preferredRoles || []).join(', ')} onChange={(event) => setForm({ ...form, preferredRoles: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="Frontend, product" />
+              </div>
+            </div>
+            </section>
+
+            <section><h2 className="mb-3 font-display text-base font-bold">About</h2>
             {/* Bio */}
             <div>
               <label htmlFor="profile-bio" className="field-label">
@@ -331,7 +372,9 @@ export default function ProfilePage() {
                 placeholder="Share your background, recent hackathon projects, and what roles you excel at…"
               />
             </div>
+            </section>
 
+            <section><h2 className="mb-3 font-display text-base font-bold">Professional links</h2>
             {/* GitHub */}
             <div>
               <label htmlFor="profile-github" className="field-label">
@@ -361,6 +404,12 @@ export default function ProfilePage() {
                 )}
               </div>
             </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2"><div><label className="field-label"><ExternalLink size={14} className="mr-1 inline" />LinkedIn URL</label><input className="field-input" name="linkedin" value={form.linkedin || ''} onChange={updateField} placeholder="https://linkedin.com/in/you" /></div><div><label className="field-label"><ExternalLink size={14} className="mr-1 inline" />Portfolio URL</label><input className="field-input" name="portfolio" value={form.portfolio || ''} onChange={updateField} placeholder="https://your-site.dev" /></div></div>
+            </section>
+
+            <section><div className="mb-3 flex items-center justify-between"><h2 className="font-display text-base font-bold">Projects</h2><button type="button" onClick={addProject} className="secondary-button px-3 py-1.5 text-xs"><Plus size={13} /> Add project</button></div><div className="space-y-3">{(form.projects || []).map((project, index) => <div key={project._id || index} className="rounded-xl border border-slate-200 p-4 dark:border-white/10"><div className="flex gap-2"><input className="field-input" value={project.title || ''} onChange={(event) => updateProject(index, 'title', event.target.value)} placeholder="Project name" /><button type="button" onClick={() => removeProject(index)} className="icon-button shrink-0 text-rose-500"><X size={15} /></button></div><textarea className="field-input mt-2 min-h-20 text-xs" value={project.description || ''} onChange={(event) => updateProject(index, 'description', event.target.value)} maxLength={500} placeholder="What did you build and what was your contribution?" /><div className="mt-2 grid gap-2 sm:grid-cols-2"><input className="field-input text-xs" value={project.url || ''} onChange={(event) => updateProject(index, 'url', event.target.value)} placeholder="https://project.example" /><input className="field-input text-xs" value={Array.isArray(project.technologies) ? project.technologies.join(', ') : project.technologies || ''} onChange={(event) => updateProject(index, 'technologies', event.target.value)} placeholder="React, Node.js, MongoDB" /></div></div>)}{!(form.projects || []).length && <p className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-xs text-slate-500 dark:border-white/10">Showcase a project to make your portfolio more convincing.</p>}</div></section>
+
+            <section className="grid gap-4 lg:grid-cols-2"><div className="rounded-xl border border-brand-500/20 bg-brand-500/5 p-4"><div className="flex items-center gap-2 text-brand-700 dark:text-brand-300"><Sparkles size={16} /><h2 className="font-bold text-sm">Match compatibility</h2></div><p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Your skills, interests, role, and experience power complementary teammate recommendations.</p><Link to="/matches" className="mt-3 inline-flex text-xs font-bold text-brand-600 hover:underline">View smart matches →</Link></div><div className="rounded-xl border border-slate-200 p-4 dark:border-white/10"><div className="flex items-center gap-2"><UsersRound size={16} className="text-brand-600" /><h2 className="font-bold text-sm">Team information</h2></div>{teams.length ? <div className="mt-2 space-y-1.5">{teams.slice(0, 3).map((team) => <p key={team._id} className="text-xs text-slate-600 dark:text-slate-300"><b>{team.hackathonName}</b> · {team.members?.length || 0}/{team.teamSizeLimit} members</p>)}</div> : <p className="mt-2 text-xs text-slate-500">You have not joined a team yet.</p>}</div></section>
 
             {/* Submit Button */}
             <div className="pt-2">

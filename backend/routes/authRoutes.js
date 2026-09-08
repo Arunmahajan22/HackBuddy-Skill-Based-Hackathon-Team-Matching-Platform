@@ -53,6 +53,10 @@ router.post(
       .trim()
       .isLength({ min: 1, max: 50 })
       .withMessage('Each skill must be between 1 and 50 characters.'),
+    body('interests').optional().isArray({ max: 20 }).withMessage('Interests must be an array of up to 20 items.'),
+    body('interests.*').optional().trim().isLength({ min: 1, max: 50 }).withMessage('Each interest must be between 1 and 50 characters.'),
+    body('preferredRoles').optional().isArray({ max: 10 }).withMessage('Preferred roles must be an array of up to 10 items.'),
+    body('preferredRoles.*').optional().trim().isLength({ min: 1, max: 50 }).withMessage('Each preferred role must be between 1 and 50 characters.'),
     body('experienceLevel')
       .isIn(experienceLevels)
       .withMessage('Experience level must be beginner, intermediate, or advanced.'),

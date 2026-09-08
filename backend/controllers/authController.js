@@ -44,7 +44,7 @@ const respondWithAuth = (res, user, statusCode) => {
  */
 exports.register = async (req, res, next) => {
   try {
-    const { name, email, password, branch, year, bio, github, skills, experienceLevel } = req.body;
+    const { name, email, password, branch, year, bio, github, skills, interests, preferredRoles, experienceLevel } = req.body;
     const normalizedEmail = email.toLowerCase().trim();
 
     const existingUser = await User.findOne({ email: normalizedEmail }).lean();
@@ -64,6 +64,8 @@ exports.register = async (req, res, next) => {
       bio,
       github,
       skills: Array.isArray(skills) ? skills : [],
+      interests: Array.isArray(interests) ? interests : [],
+      preferredRoles: Array.isArray(preferredRoles) ? preferredRoles : [],
       experienceLevel,
     });
 

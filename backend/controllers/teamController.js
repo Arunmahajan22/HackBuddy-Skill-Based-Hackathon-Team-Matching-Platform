@@ -113,6 +113,17 @@ exports.getMyTeams = async (req, res, next) => {
   }
 };
 
+/** Get teams where the authenticated user is a member, including teams they created. */
+exports.getJoinedTeams = async (req, res, next) => {
+  try {
+    const teams = await Team.find({ members: req.user._id })
+      .select('hackathonName description requiredSkills teamSizeLimit creator members createdAt')
+      .populate('creator', 'name')
+      .sort({ createdAt: -1 }).lean();
+    return res.status(200).json({ success: true, teams });
+  } catch (error) { return next(error); }
+};
+
 /**
  * Get a specific team by its ObjectId.
  */

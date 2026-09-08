@@ -1,5 +1,6 @@
 const Team = require('../models/Team');
 const Request = require('../models/Request');
+const { createNotification } = require('../services/notificationService');
 
 /**
  * Emits an event to a user's private socket room.
@@ -76,6 +77,11 @@ exports.sendJoinRequest = async (req, res, next) => {
     notifyUser(req, creatorId, 'request:created', {
       request: populatedRequest,
       team: { _id: team._id, hackathonName: team.hackathonName },
+    });
+    await createNotification({
+      io: req.app.get('io'), recipient: creatorId, type: 'join_request',
+      title: 'New team request', message: `${req.user.name} requested to join ${team.hackathonName}.`,
+      relatedEntity: { entityType: 'request', entityId: joinRequest._id, link: '/app' },
     });
 
     return res.status(201).json({
@@ -217,6 +223,13 @@ exports.updateRequestStatus = async (req, res, next) => {
         _id: joinRequest.team._id,
         hackathonName: joinRequest.team.hackathonName,
       },
+    });
+    const accepted = status === 'accepted';
+    await createNotification({
+      io: req.app.get('io'), recipient: joinRequest.sender, type: accepted ? 'request_accepted' : 'request_rejected',
+      title: accepted ? 'You joined a team!' : 'Team request update',
+      message: accepted ? `Your request to join ${joinRequest.team.hackathonName} was accepted.` : `Your request to join ${joinRequest.team.hackathonName} was not accepted.`,
+      relatedEntity: { entityType: 'team', entityId: joinRequest.team._id, link: accepted ? '/chat' : '/explore' },
     });
 
     return res.status(200).json({
