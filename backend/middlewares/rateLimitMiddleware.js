@@ -37,6 +37,16 @@ const authRateLimiter = createLimiter({
 });
 
 /**
+ * Rate limiter for email resend requests.
+ * Prevents inbox spamming and SMTP exhaustion (5 requests per 15 min).
+ */
+const resendVerificationLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Too many verification email requests. Please wait 15 minutes before requesting again.',
+});
+
+/**
  * Action rate limiter for write operations (creating teams, sending requests).
  * Prevents spamming and database exhaustion (30 actions per 15 min).
  */
@@ -49,5 +59,6 @@ const actionRateLimiter = createLimiter({
 module.exports = {
   globalApiLimiter,
   authRateLimiter,
+  resendVerificationLimiter,
   actionRateLimiter,
 };

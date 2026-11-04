@@ -43,7 +43,7 @@ export function AuthProvider({ children }) {
         }
       } catch (_error) {
         if (isMounted) {
-          // If server rejects session, clean local cache
+          // If server rejects session (or user is unverified), clean local cache
           clearAuth();
         }
       } finally {
@@ -70,8 +70,10 @@ export function AuthProvider({ children }) {
     setIsLoading(true);
     try {
       const { data } = await api.post('/auth/login', credentials);
-      persistAuth(data);
-      return data.user;
+      if (data.token && data.user) {
+        persistAuth(data);
+      }
+      return data;
     } finally {
       setIsLoading(false);
     }
@@ -81,11 +83,18 @@ export function AuthProvider({ children }) {
     setIsLoading(true);
     try {
       const { data } = await api.post('/auth/register', profile);
-      persistAuth(data);
-      return data.user;
+      if (data.token && data.user) {
+        persistAuth(data);
+      }
+      return data;
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const resendVerification = async (email) => {
+    const { data } = await api.post('/auth/resend-verification', { email });
+    return data;
   };
 
   const logout = async () => {
@@ -111,10 +120,12 @@ export function AuthProvider({ children }) {
       isAuthenticated: Boolean(user),
       login,
       register,
+      resendVerification,
       logout,
+      persistAuth,
       updateUser,
     }),
-    [user, isLoading, isInitializing],
+    [user, isLoading, isInitializing, persistAuth],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

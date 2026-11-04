@@ -1,9 +1,16 @@
 const express = require('express');
-const { body } = require('express-validator');
-const { register, login, getMe, logout } = require('../controllers/authController');
+const { body, param } = require('express-validator');
+const {
+  register,
+  login,
+  getMe,
+  logout,
+  verifyEmail,
+  resendVerification,
+} = require('../controllers/authController');
 const { protect } = require('../middlewares/authMiddleware');
 const { validateRequest } = require('../middlewares/validateMiddleware');
-const { authRateLimiter } = require('../middlewares/rateLimitMiddleware');
+const { authRateLimiter, resendVerificationLimiter } = require('../middlewares/rateLimitMiddleware');
 
 const router = express.Router();
 const experienceLevels = ['beginner', 'intermediate', 'advanced'];
@@ -78,6 +85,47 @@ router.post(
   ],
   validateRequest,
   login,
+);
+
+// Email verification via GET URL param (clicked from email)
+router.get(
+  '/verify-email/:token',
+  [
+    param('token')
+      .isHexadecimal()
+      .isLength({ min: 64, max: 64 })
+      .withMessage('Invalid verification token format.'),
+  ],
+  validateRequest,
+  verifyEmail,
+);
+
+// Email verification via POST JSON body
+router.post(
+  '/verify-email',
+  [
+    body('token')
+      .isHexadecimal()
+      .isLength({ min: 64, max: 64 })
+      .withMessage('Invalid verification token format.'),
+  ],
+  validateRequest,
+  verifyEmail,
+);
+
+// Resend verification email with rate limiting
+router.post(
+  '/resend-verification',
+  resendVerificationLimiter,
+  [
+    body('email')
+      .trim()
+      .isEmail()
+      .normalizeEmail()
+      .withMessage('A valid email address is required.'),
+  ],
+  validateRequest,
+  resendVerification,
 );
 
 // Session rehydration endpoint

@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 const userSchema = new mongoose.Schema(
   {
@@ -64,12 +65,32 @@ const userSchema = new mongoose.Schema(
         message: '{VALUE} is not a supported experience level.',
       },
     },
+    // Email Authentication & Verification fields
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+    verificationToken: {
+      type: String,
+      select: false,
+    },
+    verificationTokenExpiresAt: {
+      type: Date,
+      select: false,
+    },
+    lastVerificationEmailSentAt: {
+      type: Date,
+      select: false,
+    },
   },
   {
     timestamps: true,
     toJSON: {
       transform: (_doc, ret) => {
         delete ret.password;
+        delete ret.verificationToken;
+        delete ret.verificationTokenExpiresAt;
+        delete ret.lastVerificationEmailSentAt;
         return ret;
       },
     },
@@ -89,6 +110,24 @@ userSchema.pre('save', async function hashPassword() {
 userSchema.methods.comparePassword = async function comparePassword(candidatePassword) {
   if (!candidatePassword || !this.password) return false;
   return bcrypt.compare(candidatePassword, this.password);
+};
+
+/**
+ * Generates a cryptographically secure, random 32-byte hex verification token.
+ * Stores the SHA-256 hashed digest in the database and returns the raw unhashed token for the email.
+ *
+ * @returns {string} Raw unhashed verification token
+ */
+userSchema.methods.generateVerificationToken = function generateVerificationToken() {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+
+  // Store SHA-256 hash in database
+  this.verificationToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+  // Token expires in 24 hours
+  this.verificationTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  this.lastVerificationEmailSentAt = new Date();
+
+  return rawToken;
 };
 
 module.exports = mongoose.model('User', userSchema);

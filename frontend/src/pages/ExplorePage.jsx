@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Plus, Search, SlidersHorizontal, UsersRound, ChevronLeft, ChevronRight, RotateCcw, Sparkles, Filter } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import api from '../lib/api';
 import { Layout } from '../components/Layout';
 import { TeamCard } from '../components/TeamCard';
@@ -9,7 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useDebounce } from '../hooks/useDebounce';
 import { useSocket } from '../contexts/SocketContext';
 
-const POPULAR_SKILL_PILLS = [
+const DEFAULT_SKILL_PILLS = [
   'React',
   'Node.js',
   'Python',
@@ -24,9 +24,15 @@ const POPULAR_SKILL_PILLS = [
 export default function ExplorePage() {
   const { user } = useAuth();
   const { toast } = useSocket();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const urlSkill = searchParams.get('skill') || '';
+  const urlQuery = searchParams.get('q') || '';
+
   const [teams, setTeams] = useState([]);
-  const [queryInput, setQueryInput] = useState('');
-  const [selectedSkill, setSelectedSkill] = useState('');
+  const [skillPills, setSkillPills] = useState(DEFAULT_SKILL_PILLS);
+  const [queryInput, setQueryInput] = useState(urlQuery);
+  const [selectedSkill, setSelectedSkill] = useState(urlSkill);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -69,6 +75,14 @@ export default function ExplorePage() {
       setLoading(false);
     }
   }, [debouncedQuery, selectedSkill, page]);
+
+  useEffect(() => {
+    api.get('/stats').then(({ data }) => {
+      if (data.success && data.topSkills && data.topSkills.length > 0) {
+        setSkillPills(data.topSkills);
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchTeams();
@@ -166,7 +180,7 @@ export default function ExplorePage() {
               All Skills
             </button>
 
-            {POPULAR_SKILL_PILLS.map((skill) => {
+            {skillPills.map((skill) => {
               const isSelected = selectedSkill.toLowerCase() === skill.toLowerCase();
               return (
                 <button

@@ -1,24 +1,37 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, Eye, EyeOff, AlertCircle, Lock, Mail, Sparkles } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, AlertCircle, Lock, Mail, Send, CheckCircle2, Clock } from 'lucide-react';
 import { AuthLayout } from '../components/AuthLayout';
 import { useAuth } from '../contexts/AuthContext';
-
-const parseErrorMessage = (error) =>
-  error.response?.data?.message ||
-  error.response?.data?.errors?.[0]?.message ||
-  'We could not sign you in. Please verify your credentials and try again.';
+import api from '../lib/api';
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const { login, isLoading } = useAuth();
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
+  const [unverifiedEmail, setUnverifiedEmail] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (cooldown > 0) {
+      timerRef.current = setTimeout(() => {
+        setCooldown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearTimeout(timerRef.current);
+  }, [cooldown]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
+    setUnverifiedEmail('');
+    setResendSuccess('');
 
     if (!form.email.trim() || !form.password) {
       setError('Please enter both your email address and password.');
@@ -29,7 +42,58 @@ export default function LoginPage() {
       await login(form);
       navigate('/app', { replace: true });
     } catch (requestError) {
-      setError(parseErrorMessage(requestError));
+      if (!requestError.response) {
+        setError(
+          'Unable to connect to the backend server. Please verify the backend is running on port 5000 (run: cd backend && npm run dev).',
+        );
+        return;
+      }
+
+      const responseData = requestError.response?.data;
+      if (responseData?.code === 'EMAIL_NOT_VERIFIED') {
+        setUnverifiedEmail(responseData.email || form.email.trim());
+        setError(
+          responseData.message ||
+            'Your email address has not been verified yet. Please check your inbox or request a new verification email below.',
+        );
+        return;
+      }
+
+      setError(
+        responseData?.message ||
+          responseData?.errors?.[0]?.message ||
+          'We could not sign you in. Please verify your credentials and try again.',
+      );
+    }
+  };
+
+  const handleResend = async () => {
+    if (!unverifiedEmail || cooldown > 0 || resending) return;
+
+    setResending(true);
+    setResendSuccess('');
+
+    try {
+      const { data } = await api.post('/auth/resend-verification', {
+        email: unverifiedEmail,
+      });
+
+      if (data.alreadyVerified) {
+        setResendSuccess('This account has already been verified! Please sign in again.');
+        setUnverifiedEmail('');
+      } else {
+        setResendSuccess('Verification email sent! Please check your inbox and spam folder.');
+        setCooldown(60);
+      }
+    } catch (err) {
+      if (err.response?.data?.cooldownSeconds) {
+        setCooldown(err.response.data.cooldownSeconds);
+      }
+      setError(
+        err.response?.data?.message || 'Unable to send verification email. Please try again later.',
+      );
+    } finally {
+      setResending(false);
     }
   };
 
@@ -39,7 +103,59 @@ export default function LoginPage() {
       subtitle="Sign in to manage your teams, track incoming requests, and connect."
     >
       <form onSubmit={handleSubmit} className="mt-6 space-y-4" noValidate>
-        {error && (
+        {/* Unverified Email Warning Box */}
+        {unverifiedEmail && (
+          <div
+            role="alert"
+            className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-xs font-medium text-amber-800 dark:text-amber-200 animate-fade-in"
+          >
+            <div className="flex items-start gap-2">
+              <Clock size={16} className="shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <div>
+                <p className="font-bold text-amber-900 dark:text-amber-100">
+                  Email Verification Required
+                </p>
+                <p className="mt-1 leading-relaxed text-amber-700 dark:text-amber-300">
+                  We need to verify your email before you can access the dashboard.
+                </p>
+              </div>
+            </div>
+
+            {resendSuccess && (
+              <div className="mt-3 flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 font-semibold">
+                <CheckCircle2 size={14} />
+                <span>{resendSuccess}</span>
+              </div>
+            )}
+
+            <div className="mt-3.5 flex items-center gap-2 pt-2 border-t border-amber-500/20">
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={resending || cooldown > 0}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-amber-700 transition active:scale-95 disabled:opacity-50"
+              >
+                <Send size={12} />
+                <span>
+                  {resending
+                    ? 'Sending…'
+                    : cooldown > 0
+                    ? `Resend in ${cooldown}s`
+                    : 'Resend Verification Email'}
+                </span>
+              </button>
+              <Link
+                to={`/verify-email?email=${encodeURIComponent(unverifiedEmail)}&status=sent`}
+                className="text-xs text-amber-800 dark:text-amber-200 underline hover:opacity-80"
+              >
+                Manual code verification →
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* General Error Alert */}
+        {error && !unverifiedEmail && (
           <div
             role="alert"
             className="flex items-start gap-2.5 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-xs font-medium text-rose-700 dark:text-rose-300 animate-fade-in"

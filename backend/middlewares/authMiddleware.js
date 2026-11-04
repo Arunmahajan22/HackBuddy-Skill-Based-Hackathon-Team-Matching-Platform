@@ -4,7 +4,7 @@ const User = require('../models/User');
 /**
  * Authentication Middleware:
  * Inspects both secure HTTP-only cookies and standard Authorization: Bearer <token> headers.
- * Protects against token tampering, expiry, and non-existent users.
+ * Protects against token tampering, expiry, non-existent users, and unverified accounts.
  */
 const protect = async (req, res, next) => {
   try {
@@ -37,6 +37,16 @@ const protect = async (req, res, next) => {
       return res.status(401).json({
         success: false,
         message: 'The account associated with this token no longer exists.',
+      });
+    }
+
+    // Enforce email verification on protected routes
+    if (user.isVerified === false) {
+      return res.status(403).json({
+        success: false,
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Please verify your email address to access this feature.',
+        email: user.email,
       });
     }
 

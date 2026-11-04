@@ -4,27 +4,33 @@ import { ArrowRight, AlertCircle, User, Mail, Lock, GraduationCap, Briefcase, Sp
 import { AuthLayout } from '../components/AuthLayout';
 import { useAuth } from '../contexts/AuthContext';
 
-const initialForm = {
-  name: '',
-  email: '',
-  password: '',
-  branch: '',
-  year: '',
-  bio: '',
-  github: '',
-  skills: '',
-  experienceLevel: 'beginner',
+const parseErrorMessage = (error) => {
+  if (!error.response) {
+    return 'Unable to connect to the backend server. Please verify the backend is running on port 5000 (run: cd backend && npm run dev).';
+  }
+  if (error.response.data?.message) {
+    if (error.response.data.errors && error.response.data.errors.length > 0) {
+      return `${error.response.data.message}: ${error.response.data.errors.map((e) => e.message || e.msg).join(', ')}`;
+    }
+    return error.response.data.message;
+  }
+  return error.response.data?.errors?.[0]?.message || 'We could not create your account. Please check the fields and try again.';
 };
-
-const parseErrorMessage = (error) =>
-  error.response?.data?.message ||
-  error.response?.data?.errors?.[0]?.message ||
-  'We could not create your account. Please check the fields and try again.';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
   const { register, isLoading } = useAuth();
-  const [form, setForm] = useState(initialForm);
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    branch: '',
+    year: '',
+    bio: '',
+    github: '',
+    skills: '',
+    experienceLevel: 'beginner',
+  });
   const [error, setError] = useState('');
 
   const updateField = (event) => {
@@ -51,13 +57,17 @@ export default function RegisterPage() {
         .map((s) => s.trim())
         .filter(Boolean);
 
-      await register({
+      const result = await register({
         ...form,
         year: Number(form.year),
         skills: skillsArray,
       });
 
-      navigate('/app', { replace: true });
+      if (result?.requiresVerification) {
+        navigate(`/verify-email?email=${encodeURIComponent(form.email.trim())}&status=sent`, { replace: true });
+      } else {
+        navigate('/app', { replace: true });
+      }
     } catch (requestError) {
       setError(parseErrorMessage(requestError));
     }

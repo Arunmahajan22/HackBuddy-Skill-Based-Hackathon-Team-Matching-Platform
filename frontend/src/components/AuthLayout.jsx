@@ -66,10 +66,10 @@ export function AuthLayout({ children, title, subtitle }) {
             </div>
             <div className="text-xs">
               <div className="flex items-center gap-1 font-bold text-slate-900 dark:text-white">
-                <Star size={13} className="fill-amber-400 text-amber-400" />
-                <span>Over 1,200+ hackathon teams formed</span>
+                <ShieldCheck size={14} className="text-emerald-500" />
+                <span>Verified Builder Network</span>
               </div>
-              <p className="text-slate-500 dark:text-slate-400">Across CalHacks, MIT HackMIT, and ETHGlobal</p>
+              <p className="text-slate-500 dark:text-slate-400">Collaborating across active hackathon projects</p>
             </div>
           </div>
         </div>

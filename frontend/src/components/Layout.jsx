@@ -57,7 +57,7 @@ export function Layout({ children }) {
           {/* Logo & Platform Tag */}
           <div className="flex items-center gap-6">
             <Link
-              to={user ? '/app' : '/login'}
+              to="/"
               className="group flex items-center gap-2.5 font-bold tracking-tight text-slate-900 transition hover:opacity-95 dark:text-white"
             >
               <span className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-md shadow-brand-500/25 transition-transform duration-200 group-hover:scale-105">

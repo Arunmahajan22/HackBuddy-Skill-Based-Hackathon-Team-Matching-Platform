@@ -1,7 +1,9 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
+import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import VerifyEmailPage from './pages/VerifyEmailPage';
 import DashboardPage from './pages/DashboardPage';
 import ExplorePage from './pages/ExplorePage';
 import CreateTeamPage from './pages/CreateTeamPage';
@@ -43,6 +45,10 @@ export default function App() {
 
   return (
     <Routes>
+      {/* SaaS Landing / Home Page */}
+      <Route path="/" element={<LandingPage />} />
+
+      {/* Authentication & Verification */}
       <Route
         path="/login"
         element={isAuthenticated ? <Navigate to="/app" replace /> : <LoginPage />}
@@ -51,6 +57,16 @@ export default function App() {
         path="/register"
         element={isAuthenticated ? <Navigate to="/app" replace /> : <RegisterPage />}
       />
+      <Route
+        path="/verify-email"
+        element={<VerifyEmailPage />}
+      />
+      <Route
+        path="/verify-email/:token"
+        element={<VerifyEmailPage />}
+      />
+
+      {/* Protected App Routes */}
       <Route
         path="/app"
         element={
@@ -83,9 +99,11 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+
+      {/* Fallback */}
       <Route
         path="*"
-        element={<Navigate to={isAuthenticated ? '/app' : '/login'} replace />}
+        element={<Navigate to="/" replace />}
       />
     </Routes>
   );
