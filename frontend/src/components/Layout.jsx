@@ -13,9 +13,11 @@ import {
   X,
   Sparkles,
   Shield,
+  MessageCircle,
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { NotificationBell } from './NotificationBell';
 
 export function Layout({ children }) {
   const { theme, toggleTheme } = useTheme();
@@ -87,12 +89,21 @@ export function Layout({ children }) {
                   <UserRound size={16} />
                   <span>Profile</span>
                 </NavLink>
+                <NavLink to="/chat" className="nav-link" role="menuitem">
+                  <MessageCircle size={16} />
+                  <span>Messages</span>
+                </NavLink>
+                <NavLink to="/matches" className="nav-link" role="menuitem">
+                  <Sparkles size={16} />
+                  <span>Smart Matches</span>
+                </NavLink>
               </div>
             )}
           </div>
 
           {/* Right Action Controls */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {user && <NotificationBell />}
             {/* User Avatar Badge */}
             {user && (
               <Link
@@ -185,6 +196,10 @@ export function Layout({ children }) {
               >
                 <UserRound size={16} /> Maker Profile
               </NavLink>
+              <NavLink to="/chat" className="nav-link">
+                <MessageCircle size={16} /> Messages
+              </NavLink>
+              <NavLink to="/matches" className="nav-link"><Sparkles size={16} /> Smart Matches</NavLink>
               <div className="my-2 border-t border-slate-200/70 dark:border-white/10" />
               <button
                 type="button"

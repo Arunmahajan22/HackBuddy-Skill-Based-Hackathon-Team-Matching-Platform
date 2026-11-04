@@ -11,6 +11,8 @@ const userRoutes = require('./routes/userRoutes');
 const teamRoutes = require('./routes/teamRoutes');
 const requestRoutes = require('./routes/requestRoutes');
 const statsRoutes = require('./routes/statsRoutes');
+const chatRoutes = require('./routes/chatRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 const { notFound, errorHandler } = require('./middlewares/errorMiddleware');
 const { globalApiLimiter } = require('./middlewares/rateLimitMiddleware');
 const initializeSockets = require('./sockets');
@@ -71,6 +73,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/teams', teamRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Error Handling Middleware Pipeline
 app.use(notFound);

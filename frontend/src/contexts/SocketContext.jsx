@@ -2,13 +2,18 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, useCal
 import { io } from 'socket.io-client';
 import { CheckCircle2, AlertCircle, Info, XCircle, X } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import api from '../lib/api';
 
 const SocketContext = createContext(null);
 
 export function SocketProvider({ children }) {
   const { isAuthenticated, user } = useAuth();
   const socketRef = useRef(null);
+  const [socket, setSocket] = useState(null);
+  const [connectionState, setConnectionState] = useState('disconnected');
   const [notifications, setNotifications] = useState([]);
+  const [inboxNotifications, setInboxNotifications] = useState([]);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [eventVersion, setEventVersion] = useState(0);
 
   const dismissNotification = useCallback((id) => {
@@ -26,12 +31,43 @@ export function SocketProvider({ children }) {
     }, 5000);
   }, [dismissNotification]);
 
+  const loadNotifications = useCallback(async () => {
+    if (!isAuthenticated) return;
+    try {
+      const { data } = await api.get('/notifications');
+      setInboxNotifications(data.notifications || []);
+      setUnreadNotificationCount(data.unreadCount || 0);
+    } catch (_error) {
+      // The bell remains usable; a later real-time event will repopulate it.
+    }
+  }, [isAuthenticated]);
+
+  const markNotificationRead = useCallback(async (id) => {
+    try {
+      const { data } = await api.patch(`/notifications/${id}/read`);
+      setInboxNotifications((items) => items.map((item) => item._id === id ? data.notification : item));
+      setUnreadNotificationCount((count) => Math.max(0, count - 1));
+    } catch (_error) { /* keep notification unread when the request fails */ }
+  }, []);
+
+  const markAllNotificationsRead = useCallback(async () => {
+    try {
+      await api.patch('/notifications/read-all');
+      setInboxNotifications((items) => items.map((item) => item.readAt ? item : { ...item, readAt: new Date().toISOString() }));
+      setUnreadNotificationCount(0);
+    } catch (_error) { /* preserve current state on failure */ }
+  }, []);
+
+  useEffect(() => { loadNotifications(); }, [loadNotifications]);
+
   useEffect(() => {
     if (!isAuthenticated || !user) {
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
       }
+      setSocket(null);
+      setConnectionState('disconnected');
       return undefined;
     }
 
@@ -49,52 +85,62 @@ export function SocketProvider({ children }) {
     });
 
     socketRef.current = socket;
+    setSocket(socket);
+    setConnectionState('connecting');
 
     socket.on('connect', () => {
       // Authenticated socket automatically joins user:<userId> on server
+      setConnectionState('connected');
     });
 
     socket.on('connect_error', (_err) => {
       // Reconnection handled automatically by socket.io-client
+      setConnectionState('reconnecting');
     });
+    socket.on('disconnect', () => setConnectionState('reconnecting'));
 
     socket.on('request:created', (payload) => {
-      const teamName = payload.team?.hackathonName || 'your team';
-      const senderName = payload.request?.sender?.name || 'A builder';
-      toast('info', `${senderName} submitted a join request for ${teamName}.`);
       setEventVersion((v) => v + 1);
     });
 
     socket.on('request:updated', (payload) => {
-      const teamName = payload.team?.hackathonName || 'the team';
-      const status = payload.request?.status;
-      if (status === 'accepted') {
-        toast('success', `Congratulations! Your request for ${teamName} was accepted!`);
-      } else if (status === 'rejected') {
-        toast('warning', `Your request for ${teamName} was not accepted.`);
-      }
       setEventVersion((v) => v + 1);
+    });
+    socket.on('notification:new', (notification) => {
+      setInboxNotifications((items) => [notification, ...items.filter((item) => item._id !== notification._id)].slice(0, 30));
+      setUnreadNotificationCount((count) => count + (notification.readAt ? 0 : 1));
+      toast(notification.type === 'request_accepted' ? 'success' : 'info', notification.title);
     });
 
     return () => {
       socket.off('connect');
       socket.off('connect_error');
+      socket.off('disconnect');
       socket.off('request:created');
       socket.off('request:updated');
+      socket.off('notification:new');
       socket.disconnect();
       socketRef.current = null;
+      setSocket(null);
+      setConnectionState('disconnected');
     };
   }, [isAuthenticated, user, toast]);
 
   const value = useMemo(
     () => ({
-      socket: socketRef.current,
+      socket,
+      connectionState,
       notifications,
+      inboxNotifications,
+      unreadNotificationCount,
+      loadNotifications,
+      markNotificationRead,
+      markAllNotificationsRead,
       dismissNotification,
       eventVersion,
       toast,
     }),
-    [notifications, eventVersion, dismissNotification, toast],
+    [socket, connectionState, notifications, inboxNotifications, unreadNotificationCount, eventVersion, dismissNotification, toast, loadNotifications, markNotificationRead, markAllNotificationsRead],
   );
 
   return (

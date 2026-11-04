@@ -1,5 +1,8 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+const Conversation = require('../models/Conversation');
+const registerChatHandlers = require('./chatHandlers');
 
 /**
  * Extracts authentication token from socket handshake (auth object, header, or cookie).
@@ -36,6 +39,8 @@ const initializeSockets = (httpServer) => {
     pingTimeout: 60000,
     pingInterval: 25000,
   });
+  // Available to REST controllers even before any WebSocket has connected.
+  io.isUserOnline = (id) => Boolean(io.sockets.adapter.rooms.get(`user:${id.toString()}`)?.size);
 
   // Socket Authentication Middleware
   io.use((socket, next) => {
@@ -57,8 +62,19 @@ const initializeSockets = (httpServer) => {
     const userId = socket.data.userId;
     const userRoom = `user:${userId}`;
 
-    // Automatically join the user's private room
+    // Track presence in memory: no database write occurs for every socket event.
+    const wasOnline = io.sockets.adapter.rooms.get(userRoom)?.size > 0;
     socket.join(userRoom);
+
+    const notifyContactsOfPresence = async (isOnline, lastSeen = null) => {
+      const conversations = await Conversation.find({ participants: userId }).select('participants').lean();
+      conversations.forEach((conversation) => {
+        conversation.participants
+          .filter((participant) => participant.toString() !== userId)
+          .forEach((participant) => io.to(`user:${participant}`).emit('presence:update', { userId, isOnline, lastSeen }));
+      });
+    };
+    if (!wasOnline) notifyContactsOfPresence(true).catch(() => {});
 
     // Explicit user room join verification
     socket.on('user:join', (requestedUserId, acknowledge) => {
@@ -75,8 +91,17 @@ const initializeSockets = (httpServer) => {
     });
 
     socket.on('disconnect', (_reason) => {
-      // Clean up socket references automatically handled by Socket.IO
+      // Socket.IO removes this socket from its rooms before the disconnect event.
+      setTimeout(async () => {
+        if (io.isUserOnline(userId)) return;
+        const lastSeen = new Date();
+        // One write only after all tabs/devices have disconnected, rather than per presence event.
+        await User.updateOne({ _id: userId }, { $set: { lastSeen } }).catch(() => {});
+        notifyContactsOfPresence(false, lastSeen).catch(() => {});
+      }, 0);
     });
+
+    registerChatHandlers(io, socket);
   });
 
   return io;

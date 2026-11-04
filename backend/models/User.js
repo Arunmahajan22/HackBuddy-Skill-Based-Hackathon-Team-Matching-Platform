@@ -49,6 +49,9 @@ const userSchema = new mongoose.Schema(
       maxlength: [255, 'GitHub URL cannot exceed 255 characters.'],
       default: '',
     },
+    avatarUrl: { type: String, trim: true, maxlength: [500, 'Avatar URL cannot exceed 500 characters.'], default: '' },
+    linkedin: { type: String, trim: true, maxlength: [255, 'LinkedIn URL cannot exceed 255 characters.'], default: '' },
+    portfolio: { type: String, trim: true, maxlength: [255, 'Portfolio URL cannot exceed 255 characters.'], default: '' },
     skills: {
       type: [String],
       default: [],
@@ -56,6 +59,20 @@ const userSchema = new mongoose.Schema(
         Array.isArray(skills)
           ? [...new Set(skills.map((skill) => String(skill).trim()).filter(Boolean))]
           : [],
+    },
+    interests: {
+      type: [String],
+      default: [],
+      set: (interests) => Array.isArray(interests)
+        ? [...new Set(interests.map((interest) => String(interest).trim()).filter(Boolean))]
+        : [],
+    },
+    preferredRoles: {
+      type: [String],
+      default: [],
+      set: (roles) => Array.isArray(roles)
+        ? [...new Set(roles.map((role) => String(role).trim()).filter(Boolean))]
+        : [],
     },
     experienceLevel: {
       type: String,
@@ -81,6 +98,20 @@ const userSchema = new mongoose.Schema(
     lastVerificationEmailSentAt: {
       type: Date,
       select: false,
+    },
+    hackathonExperience: { type: Number, min: [0, 'Hackathon experience cannot be negative.'], max: [100, 'Hackathon experience is too large.'], default: 0 },
+    availability: { type: String, enum: ['open', 'weekends', 'evenings', 'limited', 'unavailable'], default: 'open' },
+    preferredTeamSize: { type: Number, min: [2, 'Preferred team size must be at least 2.'], max: [20, 'Preferred team size cannot exceed 20.'], default: 4 },
+    projects: [{
+      title: { type: String, required: true, trim: true, maxlength: 100 },
+      description: { type: String, trim: true, maxlength: 500, default: '' },
+      url: { type: String, trim: true, maxlength: 255, default: '' },
+      technologies: { type: [String], default: [] },
+    }],
+    // Updated only when the user's final active socket disconnects.
+    lastSeen: {
+      type: Date,
+      default: null,
     },
   },
   {

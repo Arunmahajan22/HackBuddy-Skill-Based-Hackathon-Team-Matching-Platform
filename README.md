@@ -1,7 +1,7 @@
-<div align="center">
-
 # ⚡ HackBuddy
 ### *Skill-Based Hackathon Teammate Discovery & Real-Time Matching Platform*
+
+<div align="center">
 
 [![React 19](https://img.shields.io/badge/React-19.x-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8.x-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
@@ -14,7 +14,7 @@
 
 <br />
 
-**HackBuddy** is a production-grade full-stack platform engineered to connect ambitious developers, designers, and AI specialists for hackathons. Built with a high-performance **MERN** stack, it features production-style email authentication with Nodemailer, atomic database concurrency control, real-time WebSocket synchronization, tiered API rate limiting, and a Big-Tech inspired SaaS interface.
+**HackBuddy** is a production-grade full-stack platform engineered to connect ambitious developers, designers, and AI specialists for hackathons. Built with a high-performance **MERN** stack, it features production-style email authentication with Nodemailer, atomic database concurrency control, real-time WebSocket synchronization, 1-on-1 & team chat, smart match scoring, tiered API rate limiting, and a Big-Tech inspired SaaS interface.
 
 [Explore Architecture](#-system-architecture) • [Engineering Highlights](#-engineering-deep-dives) • [Quick Start](#-getting-started) • [SMTP Setup](#-email-verification--smtp-setup) • [API Spec](#-api-specification) • [Interview Guide](./INTERVIEW_GUIDE.md)
 
@@ -25,6 +25,8 @@
 ## 🌟 Key Features
 
 - 📧 **Production-Grade Email Authentication**: Cryptographically secure SHA-256 token generation, 24-hour expiration, automated responsive email dispatch with Nodemailer, and unverified account protection.
+- 💬 **Real-Time Direct Messaging**: 1-on-1 and team chat powered by Socket.IO with typing indicators, online/offline status, and notification badging.
+- 🎯 **Smart Match Scoring**: Multi-factor matchmaking algorithm evaluating skill overlaps, hackathon experience, and availability.
 - 🔍 **Skill-Based Discovery**: Instant debounced search and multi-skill filter pills (`React`, `Python`, `AI/ML`, `UI/UX`, `Solidity`, etc.) with server-side pagination.
 - 🛡️ **Atomic Concurrency Control**: Prevents team overfills under simultaneous join requests using conditional database-level atomic updates.
 - ⚡ **Real-Time WebSockets**: Instant notifications via Socket.IO for application submissions, decisions, and roster changes delivered to private rooms.
@@ -55,7 +57,9 @@
                      MongoDB Atlas (Database Boundary)
    ├── User Collection (Compound Skills Index · Salted Bcrypt Hashing · Verification Tokens)
    ├── Team Collection (Compound Text & Multikey Skills Indexes)
-   └── Request Collection (Unique Sender+Team Compound Index · Atomic Updates)
+   ├── Request Collection (Unique Sender+Team Compound Index · Atomic Updates)
+   ├── Conversation & Message Collections (Compound Indexes for Low-Latency Chat)
+   └── Notification Collection (Multi-Type Real-Time Activity Alerts)
 ```
 
 ---
@@ -118,6 +122,13 @@
 
 ---
 
+### 5. Real-Time Socket.IO Lifecycle & Room Partitioning
+* **Handshake Authentication:** Socket connections verify JWT tokens during handshake from cookies or auth headers.
+* **Private User Rooms:** Sockets join isolated rooms `user:<userId>`. Direct user-to-user room access is strictly authorized, eliminating information leakage.
+* **Memory Leak Prevention:** React `useEffect` cleanups detach all listeners (`socket.off(...)`) on component unmount with exponential reconnection backoff (`1s` to `5s`).
+
+---
+
 ## 🛠️ Tech Stack & Technologies
 
 | Layer | Technology | Purpose |
@@ -128,7 +139,7 @@
 | **Backend Runtime** | Node.js 20+ / Express.js 5 | REST API framework, asynchronous event loop |
 | **Database & ODM** | MongoDB Atlas / Mongoose 9 | Document storage, schema validation, compound indexes |
 | **Email Service** | Nodemailer 7.x | SMTP email delivery with HTML template & link generator |
-| **Real-Time Sync** | Socket.IO 4.8 | Low-latency bidirectional events and notifications |
+| **Real-Time Sync & Chat** | Socket.IO 4.8 | Low-latency bidirectional events, private rooms, and direct messaging |
 | **Security & Auth** | JWT (`jsonwebtoken`) + `bcryptjs` + `crypto` | Stateless session management, 12 salt rounds, SHA-256 tokens |
 | **API Hardening** | `helmet` + `express-rate-limit` | Content Security Policy, HSTS, brute-force defense |
 | **HTTP Client** | Axios | Interceptors for credentials, auto-retry, and 401 logout |
@@ -170,7 +181,7 @@
    SMTP_PASSWORD=your_16_character_app_password
    EMAIL_FROM="HackBuddy" <no-reply@hackbuddy.dev>
    ```
-   > *Note: If SMTP credentials are left empty during local testing, HackBuddy automatically logs the verification link to your backend console.*
+   > *Note: If SMTP credentials are left empty during local testing, HackBuddy automatically logs the verification link to your backend console. If your database password contains special characters like `@` or `#`, make sure to URL-encode them (e.g. `@` becomes `%40`).*
 
 3. **Configure Frontend Environment:**
    Create a `.env` file in the `frontend/` directory:
@@ -229,12 +240,14 @@ Simply copy the link from your terminal or open it in your browser to verify the
 cd backend
 npm run dev
 ```
+> Server will boot on `http://localhost:5000` with MongoDB connected.
 
 **Terminal 2 — Start the Frontend Client:**
 ```bash
 cd frontend
 npm run dev
 ```
+> Client will launch on `http://localhost:5173`.
 
 ---
 
@@ -269,6 +282,22 @@ npm run dev
 | `GET` | `/api/requests/teams/:teamId` | Protected (Creator) | Retrieves requests for a specific team |
 | `PATCH` | `/api/requests/:requestId` | Protected (Creator) | Atomic Accept / Reject decision mutation |
 
+### Chat & Notifications
+| Method | Endpoint | Access | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/chat/conversations` | Protected | Retrieves all active conversations with unread counts |
+| `POST` | `/api/chat/conversations` | Protected | Starts or retrieves a 1-on-1 or group conversation |
+| `GET` | `/api/chat/conversations/:id/messages` | Protected | Paginated message history for a conversation |
+| `POST` | `/api/chat/conversations/:id/messages` | Protected | Sends a new message |
+| `GET` | `/api/notifications` | Protected | Retrieves user notification stream |
+| `PATCH` | `/api/notifications/:id/read` | Protected | Marks a notification as read |
+| `PATCH` | `/api/notifications/read-all` | Protected | Marks all notifications as read |
+
+### Real-Time Telemetry & Stats
+| Method | Endpoint | Access | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/stats` | Public (Cached) | Live counts of real verified builders, active teams, and skills |
+
 ---
 
 ## 📂 Project Structure
@@ -281,7 +310,10 @@ hackbuddy/
 │   │   └── mailer.js             # Nodemailer transporter & dev fallback
 │   ├── controllers/
 │   │   ├── authController.js     # Email verification, timing attack defense, JWT
+│   │   ├── chatController.js     # Conversation & message handling
+│   │   ├── notificationController.js # Multi-type alerts & read states
 │   │   ├── requestController.js  # Concurrency-safe acceptance & batch queries
+│   │   ├── statsController.js    # Live database telemetry & top skills aggregation
 │   │   ├── teamController.js     # Team CRUD & lean query pipelines
 │   │   └── userController.js     # User profile management
 │   ├── middlewares/
@@ -290,14 +322,23 @@ hackbuddy/
 │   │   ├── rateLimitMiddleware.js# Tiered rate limiting & resend rate limiter
 │   │   └── validateMiddleware.js # Centralized express-validator schema checks
 │   ├── models/
+│   │   ├── Conversation.js       # 1-on-1 and team conversation model
+│   │   ├── Message.js            # Chat message schema with read receipts
+│   │   ├── Notification.js       # Real-time event notifications
 │   │   ├── Request.js            # Request schema with compound unique index
 │   │   ├── Team.js               # Team schema with text & multikey indexes
-│   │   └── User.js               # User schema with SHA-256 verification token methods
-│   ├── routes/                   # Modular Express routers (authRoutes, teamRoutes...)
+│   │   └── User.js               # User schema with SHA-256 tokens & profile fields
+│   ├── routes/                   # Modular Express routers (auth, chat, teams...)
+│   ├── services/
+│   │   ├── chatService.js        # Chat business logic
+│   │   ├── matchScoreService.js  # Skill overlap & experience matchmaking formula
+│   │   └── notificationService.js# Event notification dispatchers
 │   ├── sockets/
+│   │   ├── chatHandlers.js       # Socket.IO typing & message events
 │   │   └── index.js              # Socket.IO handshake auth & partitioned rooms
 │   ├── tests/
-│   │   └── emailAuthTest.js      # 8-step automated email authentication test suite
+│   │   ├── emailAuthTest.js      # Automated email verification test suite
+│   │   └── matchScoreService.test.js # Match scoring unit tests
 │   ├── utils/
 │   │   └── emailService.js       # Responsive HTML verification email generator
 │   └── server.js                 # Express app bootstrap & security headers
@@ -305,10 +346,12 @@ hackbuddy/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── AuthLayout.jsx    # Big-Tech dual column auth hero
+│   │   │   ├── AuthLayout.jsx    # Dual column auth hero with verified builder trust
 │   │   │   ├── JoinRequestModal.jsx # Command dialog with role chips & a11y
 │   │   │   ├── Layout.jsx        # Navigation bar, mobile drawer, & theme toggle
-│   │   │   └── TeamCard.jsx      # Memoized team card with visual seat dots
+│   │   │   ├── NotificationBell.jsx # Live notification badge & dropdown
+│   │   │   ├── TeamCard.jsx      # Memoized team card with visual seat dots
+│   │   │   └── landing/          # HeroSection, StatsBar, LivePreview, Features
 │   │   ├── contexts/
 │   │   │   ├── AuthContext.jsx   # Session rehydration & auth state
 │   │   │   ├── SocketContext.jsx # WebSocket lifecycle & multi-type toast queue
@@ -316,10 +359,13 @@ hackbuddy/
 │   │   ├── hooks/
 │   │   │   └── useDebounce.js    # 350ms input debounce for search optimization
 │   │   ├── pages/
+│   │   │   ├── ChatPage.jsx      # Real-time direct & team messaging interface
 │   │   │   ├── CreateTeamPage.jsx# Form with live interactive card preview
 │   │   │   ├── DashboardPage.jsx # Creator pipeline & capacity progress bars
-│   │   │   ├── ExplorePage.jsx   # Search, popular skill filter pills, & pagination
+│   │   │   ├── ExplorePage.jsx   # Search, dynamic skill filter pills, & pagination
+│   │   │   ├── LandingPage.jsx   # Dynamic SaaS landing page with live database stats
 │   │   │   ├── LoginPage.jsx     # Accessible sign-in with 1-click resend banner
+│   │   │   ├── MatchesPage.jsx   # Smart match score recommendations
 │   │   │   ├── ProfilePage.jsx   # Interactive skill tag chip manager
 │   │   │   ├── RegisterPage.jsx  # Multi-field builder registration
 │   │   │   └── VerifyEmailPage.jsx # Dedicated verification & token status page
@@ -332,6 +378,19 @@ hackbuddy/
 ├── INTERVIEW_GUIDE.md            # Complete SDE interview preparation guide
 └── MERN_AND_PROJECT_EXPLAINED.md # Comprehensive guide explaining full-stack MERN
 ```
+
+---
+
+## 🎯 SDE Interview Talking Points
+
+If you are showcasing this project in technical interviews, highlight:
+1. **Concurrency at the Data Boundary**: Explain how `findOneAndUpdate` with `$expr` prevents over-capacity states under simultaneous requests.
+2. **Eliminating the $N+1$ Waterfall**: Explain how designing `/requests/incoming` reduced 50 HTTP roundtrips to 1 parallel indexed query.
+3. **Defense-in-Depth Security**: Explain why migrating from `localStorage` to **HTTP-only cookies** prevents XSS token theft, and how precomputed dummy bcrypt comparisons prevent user enumeration timing attacks.
+4. **WebSocket Room Isolation**: Explain why emitting to `user:<userId>` rooms protects applicant privacy compared to broadcast channels.
+5. **Dynamic Data Integrity**: Explain how hardcoded vanity metrics were completely eliminated in favor of real-time MongoDB aggregations cached with cache-control headers.
+
+*(For detailed STAR stories and interview questions, check out [`INTERVIEW_GUIDE.md`](./INTERVIEW_GUIDE.md)).*
 
 ---
 

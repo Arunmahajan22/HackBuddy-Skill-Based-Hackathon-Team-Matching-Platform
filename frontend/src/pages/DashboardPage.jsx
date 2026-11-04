@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Check, Inbox, Plus, UsersRound, X, Layers, Clock, CheckCircle2, XCircle, Sparkles, RefreshCw, ArrowRight, Shield } from 'lucide-react';
+import { Check, Inbox, Plus, UsersRound, X, Layers, Clock, CheckCircle2, XCircle, Sparkles, RefreshCw, ArrowRight, Shield, MessageCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../lib/api';
 import { Layout } from '../components/Layout';
@@ -426,6 +426,14 @@ export default function DashboardPage() {
                                 <span>{actionLoadingId === request._id ? 'Rejecting…' : 'Decline'}</span>
                               </button>
                             </div>
+                          )}
+                          {isAccepted && sender._id && (
+                            <Link
+                              to={`/chat?user=${sender._id}`}
+                              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-brand-500/10 px-3 py-2 text-xs font-bold text-brand-700 transition hover:bg-brand-500/20 dark:text-brand-300"
+                            >
+                              <MessageCircle size={14} /> Message teammate
+                            </Link>
                           )}
                         </div>
                       </div>
