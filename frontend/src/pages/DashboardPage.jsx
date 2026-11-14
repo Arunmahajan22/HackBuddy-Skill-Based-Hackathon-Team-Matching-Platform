@@ -1,5 +1,20 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Check, Inbox, Plus, UsersRound, X, Layers, Clock, CheckCircle2, XCircle, Sparkles, RefreshCw, ArrowRight, Shield, MessageCircle } from 'lucide-react';
+import {
+  Check,
+  Inbox,
+  Plus,
+  UsersRound,
+  X,
+  Layers,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Sparkles,
+  RefreshCw,
+  ArrowRight,
+  Shield,
+  MessageCircle,
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../lib/api';
 import { Layout } from '../components/Layout';
@@ -262,13 +277,22 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      {/* Skills */}
-                      <div className="mt-3 flex flex-wrap gap-1">
-                        {team.requiredSkills.map((skill) => (
-                          <span key={skill} className="skill-badge text-[10px] py-0.5">
-                            {skill}
-                          </span>
-                        ))}
+                      {/* Skills and Team Chat Button */}
+                      <div className="mt-3.5 flex items-center justify-between gap-2 border-t border-slate-100 pt-2.5 dark:border-white/5">
+                        <div className="flex flex-wrap gap-1">
+                          {team.requiredSkills.map((skill) => (
+                            <span key={skill} className="skill-badge text-[10px] py-0.5">
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                        <Link
+                          to={`/chat?team=${team._id}`}
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-brand-500/20 bg-brand-500/10 px-2.5 py-1 text-xs font-bold text-brand-700 transition hover:bg-brand-500/20 dark:text-brand-300"
+                        >
+                          <MessageCircle size={13} />
+                          <span>Team Chat</span>
+                        </Link>
                       </div>
                     </div>
                   );
@@ -319,11 +343,13 @@ export default function DashboardPage() {
                     }`}
                   >
                     <span>{tab.label}</span>
-                    <span className={`rounded-full px-1.5 py-0.2 text-[10px] ${
-                      activeTab === tab.id
-                        ? 'bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-200'
-                        : 'bg-transparent text-slate-400'
-                    }`}>
+                    <span
+                      className={`rounded-full px-1.5 py-0.2 text-[10px] ${
+                        activeTab === tab.id
+                          ? 'bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-200'
+                          : 'bg-transparent text-slate-400'
+                      }`}
+                    >
                       {tab.count}
                     </span>
                   </button>

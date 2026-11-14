@@ -14,7 +14,7 @@
 
 <br />
 
-**HackBuddy** is a production-grade full-stack platform engineered to connect ambitious developers, designers, and AI specialists for hackathons. Built with a high-performance **MERN** stack, it features production-style email authentication with Nodemailer, atomic database concurrency control, real-time WebSocket synchronization, 1-on-1 & team chat, smart match scoring, tiered API rate limiting, and a Big-Tech inspired SaaS interface.
+**HackBuddy** is a production-grade full-stack platform engineered to connect ambitious developers, designers, and AI specialists for hackathons. Built with a high-performance **MERN** stack, it features production-style email verification, atomic database concurrency control, real-time WebSocket communication for both **1-on-1 direct messaging and authenticated team group chats**, an explainable multi-factor matchmaking engine evaluating **technical skills and availability compatibility**, defense-in-depth XSS mitigation, and a clean Big-Tech SaaS interface.
 
 [Explore Architecture](#-system-architecture) • [Engineering Highlights](#-engineering-deep-dives) • [Quick Start](#-getting-started) • [SMTP Setup](#-email-verification--smtp-setup) • [API Spec](#-api-specification) • [Interview Guide](./INTERVIEW_GUIDE.md)
 
@@ -25,13 +25,23 @@
 ## 🌟 Key Features
 
 - 📧 **Production-Grade Email Authentication**: Cryptographically secure SHA-256 token generation, 24-hour expiration, automated responsive email dispatch with Nodemailer, and unverified account protection.
-- 💬 **Real-Time Direct Messaging**: 1-on-1 and team chat powered by Socket.IO with typing indicators, online/offline status, and notification badging.
-- 🎯 **Smart Match Scoring**: Multi-factor matchmaking algorithm evaluating skill overlaps, hackathon experience, and availability.
+- 💬 **Real-Time Team Group Chat & Direct Messaging**: 
+  - Dedicated **Team Group Chat rooms** strictly authorized on the backend—only verified roster members and team creators can join the room, read history, or send messages.
+  - 1-on-1 direct messaging between teammates with typing indicators, online/offline presence tracking, and unread badges.
+  - Persistent message history in MongoDB with sender details, timestamps, and read receipts.
+- 🎯 **Availability-Aware Smart Match Scoring**:
+  - Deterministic matchmaking algorithm evaluating technical skill overlap, complementary roles, experience level, AND schedule compatibility.
+  - Profile availability fields: current status (`open`, `busy`, `unavailable`), available days of the week, preferred working hours, and time slot flexibility.
+  - Transparent match reasons explain exactly why a builder is recommended (e.g., *"Matching working hours"*, *"Available on weekdays"*, *"Complementary Frontend + Backend strengths"*).
 - 🔍 **Skill-Based Discovery**: Instant debounced search and multi-skill filter pills (`React`, `Python`, `AI/ML`, `UI/UX`, `Solidity`, etc.) with server-side pagination.
-- 🛡️ **Atomic Concurrency Control**: Prevents team overfills under simultaneous join requests using conditional database-level atomic updates.
-- ⚡ **Real-Time WebSockets**: Instant notifications via Socket.IO for application submissions, decisions, and roster changes delivered to private rooms.
-- 🔐 **Dual-Channel Auth**: Hardened authentication supporting secure **HTTP-Only Cookies** (`SameSite=Lax`, `secure: prod`) alongside Bearer tokens, eliminating XSS token theft.
-- 📊 **Creator Command Center**: Visual dashboard with capacity progress bars, applicant review pipeline, and batch data loading eliminating $N+1$ query waterfalls.
+- 🛡️ **Atomic Concurrency Control**: Prevents team overfills under simultaneous join requests using conditional database-level atomic updates (`$expr` and `$addToSet`).
+- ⚡ **Real-Time WebSockets**: Instant notifications via Socket.IO for application submissions, decisions, and roster changes delivered to private user rooms.
+- 🔐 **Defense-in-Depth Authentication & Sanitization**:
+  - **HttpOnly Cookies**: Sensitive JWT authentication tokens are stored exclusively in HttpOnly cookies (`SameSite=Lax`, `secure: prod`), preventing JavaScript client-side token access.
+  - **Strict Server-Side Sanitization**: All incoming text inputs, user bios, project descriptions, and chat messages are sanitized (`stripHtml`, length bounding, control character stripping).
+  - **Safe URL Filtering**: External profile links (GitHub, LinkedIn, portfolio) are strictly validated to block pseudo-protocols (`javascript:`, `data:`, `vbscript:`).
+  - **Secure CORS & CSP**: Explicit origin whitelisting with credentials and Helmet Content Security Policy headers.
+- 📊 **Creator Command Center**: Visual dashboard with capacity progress bars, applicant review pipeline, batch data loading, and quick-access team chat shortcuts.
 - 🎨 **Big-Tech SaaS Design**: Linear/Stripe-inspired interface with dark/light theme parity, keyboard accessibility (a11y), responsive glassmorphism, and live form card previews.
 
 ---
@@ -42,23 +52,24 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                          React 19 + Vite Frontend                           │
 │  React Router v7 · Tailwind CSS · AuthContext · ThemeContext · SocketContext│
+│  (Tokens stored in HttpOnly Cookies · Zero localStorage token storage)      │
 └──────────────────────┬───────────────────────────────┬──────────────────────┘
-                       │ REST / JSON + Cookies/Bearer  │ Socket.IO + JWT Handshake
+                       │ REST / JSON + HttpOnly Cookie │ Socket.IO + Cookie Handshake
                        ▼                               ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                            Express.js 5 Backend                             │
-│  Helmet CSP · Tiered Rate Limiters · CookieParser · Validation Middleware   │
-│  Controllers (Lean Queries) ──────────► Socket.IO Partitioned User Rooms    │
+│  Helmet CSP · Tiered Rate Limiters · CookieParser · Input Sanitization      │
+│  Controllers (Lean Queries) ───► Socket.IO: User Rooms & Team Chat Rooms    │
 │        │                                                                    │
 │        ▼                                                                    │
 │  Nodemailer Service ──────────────────► SMTP Server (Gmail, SendGrid, etc.) │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        ▼
                      MongoDB Atlas (Database Boundary)
-   ├── User Collection (Compound Skills Index · Salted Bcrypt Hashing · Verification Tokens)
+   ├── User Collection (Skills & Availability Index · Bcrypt Hash · SHA-256 Tokens)
    ├── Team Collection (Compound Text & Multikey Skills Indexes)
    ├── Request Collection (Unique Sender+Team Compound Index · Atomic Updates)
-   ├── Conversation & Message Collections (Compound Indexes for Low-Latency Chat)
+   ├── Conversation & Message Collections (Direct & Team Chat · Read Receipts)
    └── Notification Collection (Multi-Type Real-Time Activity Alerts)
 ```
 
@@ -66,15 +77,44 @@
 
 ## 🔬 Engineering Deep Dives (SDE Highlights)
 
-### 1. Cryptographic Email Authentication & Verification Pipeline
-* **Token Security:** Verification tokens are generated using `crypto.randomBytes(32).toString('hex')`. Only the SHA-256 hashed digest is stored in the database (`verificationToken`), ensuring that even a database dump cannot be used to forge verification links.
-* **Token Lifecycle:** Tokens automatically expire after **24 hours**. Upon successful verification, tokens are immediately cleared (`undefined`) to prevent replay attacks.
-* **Login & Route Protection:** Accounts with `isVerified: false` are prevented from signing in (returning `403 Forbidden` with code `EMAIL_NOT_VERIFIED`) and blocked by `authMiddleware.protect`.
-* **Enumeration Defense & Cooldown:** The `/resend-verification` endpoint enforces a **60-second cooldown** and returns a generic success message to prevent user enumeration attacks.
+### 1. Real-Time Team Group Chat with Backend Authorization
+* **The Problem:** In hackathons, communication happens in teams, not just 1-on-1 direct messages. If chat security relies solely on client-side UI visibility, malicious actors can emit socket events or hit REST endpoints to spy on private team strategy or send unauthorized messages.
+* **Backend Membership Validation:** Every team chat operation (`GET /api/chat/teams/:teamId`, `POST /api/chat/teams/:teamId/messages`, and Socket.IO `team:join` / `team:message:send` events) validates that the authenticated `req.user._id` is either the team creator or an active member in `Team.members`:
+  ```javascript
+  export const assertTeamMember = async (teamId, userId) => {
+    const team = await Team.findById(teamId).select('creator members hackathonName').lean();
+    if (!team) throw Object.assign(new Error('Team not found'), { status: 404 });
+    const isMember = String(team.creator) === String(userId) ||
+      team.members.some((m) => String(m) === String(userId));
+    if (!isMember) throw Object.assign(new Error('Access denied: You are not a member of this team'), { status: 403 });
+    return team;
+  };
+  ```
+* **Persistence & History:** Team messages are persisted in MongoDB with `team: ObjectId`, `sender: ObjectId`, `content` (HTML-stripped), timestamps, and `readBy` arrays. Messages load seamlessly on refresh or re-login.
+* **Socket Room Isolation:** Clients join `team:${teamId}` rooms only after backend validation passes, preventing cross-tenant eavesdropping.
 
 ---
 
-### 2. Atomic Concurrency Control (Race Condition Prevention)
+### 2. Availability-Aware Matching Algorithm
+* **The Problem:** Matching hackathon teammates solely on technical skills often fails in practice because teammates have incompatible schedules (e.g., night owls vs. daytime workers, or weekday vs. weekend availability).
+* **The Solution:** The deterministic matchmaking service (`backend/services/matchScoreService.js`) calculates a 0–100 compatibility score integrating both skill complementarity and schedule alignment:
+  - **Availability Status:** Active `open` builders receive full compatibility; `busy` builders receive reduced baseline weight; `unavailable` candidates receive a heavy penalty (-25) with an explicit explanation.
+  - **Days of Week Overlap:** Calculates Jaccard similarity across candidate days (`monday` through `sunday`). Overlapping days earn up to 8 points.
+  - **Working Hours & Time Slots:** Compares preferred working hours (`morning`, `afternoon`, `evening`, `night`, `flexible`) and specific time slot overlaps.
+  - **Explainability:** Emits transparent human-readable reasons (e.g., *"Available on weekdays"*, *"Matching working hours"*, *"Complementary Frontend + Backend strengths"*).
+
+---
+
+### 3. Defense-in-Depth XSS Mitigation & Secure Authentication
+* **No Sensitive Tokens in `localStorage`:** The frontend has been purged of `localStorage.setItem('hackbuddy_token')`. All authentication is handled through **HttpOnly, SameSite=Lax (or None in production), Secure** cookies. Even if an attacker executes arbitrary script in the browser, the authentication token cannot be read via `document.cookie` or `localStorage`.
+* **Input Sanitization:** User-submitted text (bios, names, project descriptions, chat messages) passes through server-side sanitization (`backend/utils/sanitize.js`) that strips raw HTML tags, normalizes whitespace, and rejects control characters.
+* **Safe URL Protocols:** External portfolio, GitHub, and LinkedIn links are checked to ensure schemes are restricted to `http:` or `https:`. Links attempting to execute `javascript:alert(1)` or `data:` payloads are neutralized to `""`.
+* **Timing-Attack Defense:** Bcrypt verification uses constant-time comparison against a dummy hash when an account does not exist, preventing email enumeration via response latency analysis.
+* **Realistic Security Stance:** We do not claim "complete XSS immunity"—true defense-in-depth combines HttpOnly credentials, server sanitization, client-side escaping, Content Security Policy (CSP), and CORS origin verification.
+
+---
+
+### 4. Atomic Concurrency Control (Race Condition Prevention)
 * **The Problem:** In team matching, if a team has 1 seat remaining and two candidates are accepted simultaneously, naive read-then-write logic will add both candidates, corrupting the team size limit.
 * **The Solution:** The accept controller uses a single **atomic conditional update** in MongoDB:
   ```javascript
@@ -97,7 +137,7 @@
 
 ---
 
-### 3. Elimination of the $N+1$ Creator Request Waterfall
+### 5. Elimination of the $N+1$ Creator Request Waterfall
 * **The Problem:** The initial dashboard fetched $N$ teams, then executed $N$ sequential HTTP requests to load requests for each team, resulting in latency spikes ($O(N)$ network calls).
 * **The Solution:** Built single-shot batch endpoints `GET /api/requests/incoming` and `GET /api/teams/mine` using `.lean()` and indexed `$in` queries:
   ```javascript
@@ -110,39 +150,20 @@
 
 ---
 
-### 4. XSS Immunity & Timing-Attack Mitigation
-* **Dual-Channel Authentication:** JWTs are issued via **HTTP-only, SameSite=Lax** cookies, making them strictly inaccessible to JavaScript XSS exploits, while supporting standard `Authorization: Bearer` headers for external clients.
-* **Constant-Time Bcrypt Verification:** Mitigates user-enumeration timing attacks in `authController.login` by executing a dummy bcrypt comparison (`DUMMY_HASH`) when an email is not found:
-  ```javascript
-  if (!user) {
-    await bcrypt.compare(password || '', DUMMY_HASH); // Constant-time execution
-    return res.status(401).json({ message: 'Invalid email or password.' });
-  }
-  ```
-
----
-
-### 5. Real-Time Socket.IO Lifecycle & Room Partitioning
-* **Handshake Authentication:** Socket connections verify JWT tokens during handshake from cookies or auth headers.
-* **Private User Rooms:** Sockets join isolated rooms `user:<userId>`. Direct user-to-user room access is strictly authorized, eliminating information leakage.
-* **Memory Leak Prevention:** React `useEffect` cleanups detach all listeners (`socket.off(...)`) on component unmount with exponential reconnection backoff (`1s` to `5s`).
-
----
-
 ## 🛠️ Tech Stack & Technologies
 
 | Layer | Technology | Purpose |
 | --- | --- | --- |
-| **Frontend Framework** | React 19 (Vite) | Fast component lifecycle, JSX, and SPA routing |
+| **Frontend Framework** | React 19 (Vite 8) | Fast component lifecycle, JSX, and SPA routing |
 | **Styling & Design** | Tailwind CSS 3.4 + Lucide Icons | Responsive SaaS UI, custom design tokens, dark mode |
 | **Routing** | React Router DOM v7 | Client-side navigation, ProtectedRoute wrappers |
 | **Backend Runtime** | Node.js 20+ / Express.js 5 | REST API framework, asynchronous event loop |
 | **Database & ODM** | MongoDB Atlas / Mongoose 9 | Document storage, schema validation, compound indexes |
 | **Email Service** | Nodemailer 7.x | SMTP email delivery with HTML template & link generator |
-| **Real-Time Sync & Chat** | Socket.IO 4.8 | Low-latency bidirectional events, private rooms, and direct messaging |
-| **Security & Auth** | JWT (`jsonwebtoken`) + `bcryptjs` + `crypto` | Stateless session management, 12 salt rounds, SHA-256 tokens |
+| **Real-Time Sync & Chat** | Socket.IO 4.8 | Team group chat rooms, 1-on-1 direct messaging, typing indicators, presence |
+| **Security & Auth** | JWT (`jsonwebtoken`) + `bcryptjs` + `crypto` | Stateless session management, HttpOnly cookies, SHA-256 tokens |
 | **API Hardening** | `helmet` + `express-rate-limit` | Content Security Policy, HSTS, brute-force defense |
-| **HTTP Client** | Axios | Interceptors for credentials, auto-retry, and 401 logout |
+| **HTTP Client** | Axios | Configured with `withCredentials: true` for automatic cookie transmission |
 
 ---
 
@@ -203,36 +224,6 @@
 
 ---
 
-### 📧 Email Verification & SMTP Setup
-
-#### Option A: Gmail SMTP (Recommended for Production / Testing)
-1. Go to your **Google Account** > **Security** > **2-Step Verification**.
-2. Scroll to the bottom and select **App Passwords**.
-3. Create an app password named `HackBuddy`.
-4. Copy the generated 16-character password into `backend/.env`:
-   ```env
-   SMTP_HOST=smtp.gmail.com
-   SMTP_PORT=587
-   SMTP_USER=your_email@gmail.com
-   SMTP_PASSWORD=xxxx xxxx xxxx xxxx
-   EMAIL_FROM="HackBuddy" <your_email@gmail.com>
-   ```
-
-#### Option B: Zero-Config Local Dev Fallback
-If you do not configure SMTP credentials, HackBuddy detects this and activates a mock email transporter:
-```
-------------------------------------------------------------
-📧 [MOCK EMAIL TRANSPORTER] SMTP is not configured in .env
-To: alex@university.edu
-Subject: Verify your email address — HackBuddy
-Email Body / Verification Link:
-http://localhost:5173/verify-email/fc8c3bad5fc2f5a131040a2029566b...
-------------------------------------------------------------
-```
-Simply copy the link from your terminal or open it in your browser to verify the account instantly!
-
----
-
 ### Running the Application
 
 **Terminal 1 — Start the Backend Server:**
@@ -256,15 +247,16 @@ npm run dev
 ### Authentication & Email Verification
 | Method | Endpoint | Access | Description |
 | --- | --- | --- | --- |
-| `POST` | `/api/auth/register` | Public (Rate Limited) | Registers builder, creates SHA-256 token, sends verification email |
-| `GET` | `/api/auth/verify-email/:token` | Public | Validates token, marks email verified, returns auth session |
+| `POST` | `/api/auth/register` | Public (Rate Limited) | Registers builder with optional availability profile, sets HttpOnly cookie, sends email |
+| `GET` | `/api/auth/verify-email/:token` | Public | Validates SHA-256 token, marks email verified, returns auth session |
 | `POST` | `/api/auth/verify-email` | Public | Body-based token verification endpoint |
 | `POST` | `/api/auth/resend-verification` | Public (Rate Limited) | Resends verification email with 60s cooldown |
-| `POST` | `/api/auth/login` | Public (Rate Limited) | Constant-time auth; enforces email verification check |
+| `POST` | `/api/auth/login` | Public (Rate Limited) | Constant-time bcrypt auth; verifies email status; sets HttpOnly cookie |
 | `GET` | `/api/auth/me` | Protected | Rehydrates session for active client |
 | `POST` | `/api/auth/logout` | Public | Clears server-side auth cookie |
-| `GET` | `/api/users/me` | Protected | Retrieves authenticated user profile |
-| `PATCH` | `/api/users/me` | Protected | Updates profile fields with validation |
+| `GET` | `/api/users/me` | Protected | Retrieves authenticated user profile including availability |
+| `PATCH` | `/api/users/me` | Protected | Updates profile fields and structured availability with validation |
+| `GET` | `/api/users/recommendations` | Protected | Returns candidates ranked by skills and availability with reasons |
 
 ### Teams & Matchmaking
 | Method | Endpoint | Access | Description |
@@ -278,25 +270,35 @@ npm run dev
 | Method | Endpoint | Access | Description |
 | --- | --- | --- | --- |
 | `GET` | `/api/requests/incoming` | Protected | Batch retrieves all incoming requests for creator |
-| `POST` | `/api/requests/teams/:teamId` | Protected (Rate Limited) | Submits a join request with optional note |
+| `POST` | `/api/requests/teams/:teamId` | Protected (Rate Limited) | Submits a join request with sanitized note |
 | `GET` | `/api/requests/teams/:teamId` | Protected (Creator) | Retrieves requests for a specific team |
 | `PATCH` | `/api/requests/:requestId` | Protected (Creator) | Atomic Accept / Reject decision mutation |
 
-### Chat & Notifications
+### Chat (Direct & Team Group Chat)
 | Method | Endpoint | Access | Description |
 | --- | --- | --- | --- |
-| `GET` | `/api/chat/conversations` | Protected | Retrieves all active conversations with unread counts |
-| `POST` | `/api/chat/conversations` | Protected | Starts or retrieves a 1-on-1 or group conversation |
-| `GET` | `/api/chat/conversations/:id/messages` | Protected | Paginated message history for a conversation |
-| `POST` | `/api/chat/conversations/:id/messages` | Protected | Sends a new message |
-| `GET` | `/api/notifications` | Protected | Retrieves user notification stream |
-| `PATCH` | `/api/notifications/:id/read` | Protected | Marks a notification as read |
-| `PATCH` | `/api/notifications/read-all` | Protected | Marks all notifications as read |
+| `GET` | `/api/chat/conversations` | Protected | Retrieves active direct and team conversations with unread counts |
+| `POST` | `/api/chat/conversations` | Protected | Starts or retrieves a 1-on-1 direct conversation; body: `{ userId }` |
+| `GET` | `/api/chat/conversations/:id/messages` | Protected | Paginated message history for a 1-on-1 conversation |
+| `POST` | `/api/chat/conversations/:id/messages` | Protected | Sends a sanitized direct message; body: `{ content }` |
+| `POST` | `/api/chat/conversations/:id/read` | Protected | Marks inbound messages in a conversation as read |
+| `GET` | `/api/chat/teams/:teamId` | Protected (Member) | Retrieves or creates group chat conversation for an authorized team |
+| `GET` | `/api/chat/teams/:teamId/messages` | Protected (Member) | Paginated team chat message history (verifies team membership) |
+| `POST` | `/api/chat/teams/:teamId/messages` | Protected (Member) | Sends and persists a message to the team chat room |
 
-### Real-Time Telemetry & Stats
-| Method | Endpoint | Access | Description |
+### Socket.IO Event Reference
+| Direction | Event Name | Payload | Authorization / Notes |
 | --- | --- | --- | --- |
-| `GET` | `/api/stats` | Public (Cached) | Live counts of real verified builders, active teams, and skills |
+| Client → Server | `team:join` | `teamId` | Verified against `Team.members` & `creator` |
+| Client → Server | `team:leave` | `teamId` | Leaves `team:${teamId}` room |
+| Client → Server | `team:message:send` | `{ teamId, content }` | Persisted to DB; broadcast to `team:${teamId}` |
+| Server → Client | `team:message:new` | `{ teamId, conversationId, message }` | Delivered to authorized team members in room |
+| Client → Server | `team:typing:start` / `stop` | `teamId` | Broadcast to `team:${teamId}` room members |
+| Server → Client | `team:typing:update` | `{ teamId, userId, isTyping }` | Real-time typing indicators for team room |
+| Client → Server | `conversation:join` | `conversationId` | Verifies participant authorization |
+| Client → Server | `message:send` | `{ conversationId, content }` | 1-on-1 direct message send & persist |
+| Server → Client | `message:new` | `{ conversationId, message }` | Delivered to active conversation & recipient room |
+| Server → Client | `presence:update` | `{ userId, isOnline, lastSeen }` | Real-time status update for contacts |
 
 ---
 
@@ -309,39 +311,42 @@ hackbuddy/
 │   │   ├── db.js                 # MongoDB connection & diagnostics
 │   │   └── mailer.js             # Nodemailer transporter & dev fallback
 │   ├── controllers/
-│   │   ├── authController.js     # Email verification, timing attack defense, JWT
-│   │   ├── chatController.js     # Conversation & message handling
+│   │   ├── authController.js     # Email verification, timing attack defense, JWT, HttpOnly cookies
+│   │   ├── chatController.js     # Direct & Team chat endpoints with membership verification
 │   │   ├── notificationController.js # Multi-type alerts & read states
 │   │   ├── requestController.js  # Concurrency-safe acceptance & batch queries
 │   │   ├── statsController.js    # Live database telemetry & top skills aggregation
 │   │   ├── teamController.js     # Team CRUD & lean query pipelines
-│   │   └── userController.js     # User profile management
+│   │   └── userController.js     # User profile management with availability support
 │   ├── middlewares/
 │   │   ├── authMiddleware.js     # Cookie/Bearer JWT verification & isVerified check
 │   │   ├── errorMiddleware.js    # Global error normalization (400/409/422/500)
 │   │   ├── rateLimitMiddleware.js# Tiered rate limiting & resend rate limiter
 │   │   └── validateMiddleware.js # Centralized express-validator schema checks
 │   ├── models/
-│   │   ├── Conversation.js       # 1-on-1 and team conversation model
-│   │   ├── Message.js            # Chat message schema with read receipts
+│   │   ├── Conversation.js       # 1-on-1 ('direct') and Team ('team') conversation model
+│   │   ├── Message.js            # Chat message schema with readBy receipts & sanitization
 │   │   ├── Notification.js       # Real-time event notifications
-│   │   ├── Request.js            # Request schema with compound unique index
+│   │   ├── Request.js            # Request schema with compound unique index & sanitization
 │   │   ├── Team.js               # Team schema with text & multikey indexes
-│   │   └── User.js               # User schema with SHA-256 tokens & profile fields
-│   ├── routes/                   # Modular Express routers (auth, chat, teams...)
+│   │   └── User.js               # User schema with structured availability, SHA-256 tokens & sanitization
+│   ├── routes/                   # Modular Express routers (auth, chat, teams, users...)
 │   ├── services/
-│   │   ├── chatService.js        # Chat business logic
-│   │   ├── matchScoreService.js  # Skill overlap & experience matchmaking formula
+│   │   ├── chatService.js        # Direct & Team chat business logic with assertTeamMember
+│   │   ├── matchScoreService.js  # Skill overlap, complementary roles & availability compatibility formula
 │   │   └── notificationService.js# Event notification dispatchers
 │   ├── sockets/
-│   │   ├── chatHandlers.js       # Socket.IO typing & message events
-│   │   └── index.js              # Socket.IO handshake auth & partitioned rooms
+│   │   ├── chatHandlers.js       # Socket.IO direct & team typing and message events
+│   │   └── index.js              # Socket.IO handshake auth & partitioned user/team rooms
 │   ├── tests/
 │   │   ├── emailAuthTest.js      # Automated email verification test suite
-│   │   └── matchScoreService.test.js # Match scoring unit tests
+│   │   ├── matchScoreService.test.js # Match scoring & availability unit tests
+│   │   ├── sanitize.test.js      # Input sanitization and URL protocol defense tests
+│   │   └── teamChatAuthorization.test.js # Team chat validation and boundary tests
 │   ├── utils/
-│   │   └── emailService.js       # Responsive HTML verification email generator
-│   └── server.js                 # Express app bootstrap & security headers
+│   │   ├── emailService.js       # Responsive HTML verification email generator
+│   │   └── sanitize.js           # XSS mitigation utils (stripHtml, sanitizeUrl, bounds checking)
+│   └── server.js                 # Express app bootstrap, Helmet CSP & CORS security
 │
 ├── frontend/
 │   ├── src/
@@ -350,24 +355,27 @@ hackbuddy/
 │   │   │   ├── JoinRequestModal.jsx # Command dialog with role chips & a11y
 │   │   │   ├── Layout.jsx        # Navigation bar, mobile drawer, & theme toggle
 │   │   │   ├── NotificationBell.jsx # Live notification badge & dropdown
-│   │   │   ├── TeamCard.jsx      # Memoized team card with visual seat dots
+│   │   │   ├── TeamCard.jsx      # Memoized team card with visual seat dots & Team Chat action
 │   │   │   └── landing/          # HeroSection, StatsBar, LivePreview, Features
 │   │   ├── contexts/
-│   │   │   ├── AuthContext.jsx   # Session rehydration & auth state
-│   │   │   ├── SocketContext.jsx # WebSocket lifecycle & multi-type toast queue
+│   │   │   ├── AuthContext.jsx   # HttpOnly session management (no localStorage token)
+│   │   │   ├── SocketContext.jsx # WebSocket lifecycle & cookie-based handshake
 │   │   │   └── ThemeContext.jsx  # Dark/Light mode state with OS listener
 │   │   ├── hooks/
 │   │   │   └── useDebounce.js    # 350ms input debounce for search optimization
+│   │   ├── lib/
+│   │   │   ├── api.js            # Axios client with withCredentials: true
+│   │   │   └── safeUrl.js        # Utility preventing javascript: and data: pseudo-protocols
 │   │   ├── pages/
-│   │   │   ├── ChatPage.jsx      # Real-time direct & team messaging interface
+│   │   │   ├── ChatPage.jsx      # Direct & Team group chat interface with tabbed views & typing sync
 │   │   │   ├── CreateTeamPage.jsx# Form with live interactive card preview
-│   │   │   ├── DashboardPage.jsx # Creator pipeline & capacity progress bars
+│   │   │   ├── DashboardPage.jsx # Creator pipeline, capacity bars, and Team Chat quick links
 │   │   │   ├── ExplorePage.jsx   # Search, dynamic skill filter pills, & pagination
 │   │   │   ├── LandingPage.jsx   # Dynamic SaaS landing page with live database stats
 │   │   │   ├── LoginPage.jsx     # Accessible sign-in with 1-click resend banner
-│   │   │   ├── MatchesPage.jsx   # Smart match score recommendations
-│   │   │   ├── ProfilePage.jsx   # Interactive skill tag chip manager
-│   │   │   ├── RegisterPage.jsx  # Multi-field builder registration
+│   │   │   ├── MatchesPage.jsx   # Recommendations with availability badges, schedule tags, & reasons
+│   │   │   ├── ProfilePage.jsx   # Interactive skills & structured availability schedule manager
+│   │   │   ├── RegisterPage.jsx  # Multi-field builder registration with availability status
 │   │   │   └── VerifyEmailPage.jsx # Dedicated verification & token status page
 │   │   ├── index.css             # Tailwind design tokens & glass utilities
 │   │   └── main.jsx              # React 19 application entry point
@@ -384,13 +392,11 @@ hackbuddy/
 ## 🎯 SDE Interview Talking Points
 
 If you are showcasing this project in technical interviews, highlight:
-1. **Concurrency at the Data Boundary**: Explain how `findOneAndUpdate` with `$expr` prevents over-capacity states under simultaneous requests.
-2. **Eliminating the $N+1$ Waterfall**: Explain how designing `/requests/incoming` reduced 50 HTTP roundtrips to 1 parallel indexed query.
-3. **Defense-in-Depth Security**: Explain why migrating from `localStorage` to **HTTP-only cookies** prevents XSS token theft, and how precomputed dummy bcrypt comparisons prevent user enumeration timing attacks.
-4. **WebSocket Room Isolation**: Explain why emitting to `user:<userId>` rooms protects applicant privacy compared to broadcast channels.
-5. **Dynamic Data Integrity**: Explain how hardcoded vanity metrics were completely eliminated in favor of real-time MongoDB aggregations cached with cache-control headers.
-
-*(For detailed STAR stories and interview questions, check out [`INTERVIEW_GUIDE.md`](./INTERVIEW_GUIDE.md)).*
+1. **Authenticated Team Chat vs. Direct Chat**: Explain how you partitioned Socket.IO rooms into `team:<teamId>` with server-side roster verification (`assertTeamMember`), preventing unauthorized eavesdropping on private hackathon project strategy.
+2. **Availability-Aware Matchmaking**: Explain how the deterministic recommendation algorithm balances complementary technical skills (frontend/backend/ML) with schedule compatibility (overlapping days, time slots, and working hours), returning human-explainable reasons rather than opaque black-box numbers.
+3. **Defense-in-Depth Security**: Explain why moving authentication tokens out of `localStorage` into **HttpOnly, SameSite cookies** mitigates XSS token theft, how server-side HTML stripping cleans user-submitted content, and why claims of "XSS proof" should be replaced with defense-in-depth principles.
+4. **Concurrency at the Data Boundary**: Explain how `findOneAndUpdate` with `$expr` prevents over-capacity states under simultaneous requests.
+5. **Eliminating the $N+1$ Waterfall**: Explain how designing `/requests/incoming` reduced 50 HTTP roundtrips to 1 parallel indexed query.
 
 ---
 

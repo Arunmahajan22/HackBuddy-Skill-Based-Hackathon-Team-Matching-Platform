@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { stripHtml } = require('../utils/sanitize');
 
 const requestSchema = new mongoose.Schema(
   {
@@ -25,6 +26,7 @@ const requestSchema = new mongoose.Schema(
       trim: true,
       maxlength: [500, 'Note cannot exceed 500 characters.'],
       default: '',
+      set: (val) => stripHtml(String(val || '')),
     },
   },
   {

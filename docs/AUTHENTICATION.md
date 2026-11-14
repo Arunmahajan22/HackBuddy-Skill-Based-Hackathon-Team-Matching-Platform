@@ -1,17 +1,29 @@
-# Authentication and Authorization
+# Authentication, Security, and XSS Mitigation
 
-## Registration and login
+## Registration and Email Verification
 
-`POST /api/auth/register` validates account and initial profile fields, creates a `User`, and hashes its password in a Mongoose pre-save hook using bcrypt with 12 salt rounds. `POST /api/auth/login` selects the password hash explicitly and compares it with bcrypt. A dummy bcrypt comparison is used when an account is absent to reduce account-enumeration timing differences.
+- `POST /api/auth/register` validates builder registration credentials and optional availability data.
+- Passwords are encrypted using `bcrypt` with 12 salt rounds in a Mongoose pre-save hook.
+- A cryptographically random verification token is generated (`crypto.randomBytes(32).toString('hex')`) and its SHA-256 digest is stored with a 24-hour expiration (`verificationTokenExpires`).
+- Nodemailer dispatches an automated verification email containing the verification link (with fallback logging in development if SMTP credentials are unset).
+- `GET /api/auth/verify-email/:token` validates the SHA-256 digest, marks `isVerified: true`, and initiates an authenticated session.
+- Users cannot log in or access protected routes until their email is verified (`isVerified === true`).
 
-On success, the server signs a JWT whose subject (`sub`) is the user ID. It returns the token and sanitized user object, and sets `hackbuddy_token` as an HTTP-only cookie. The cookie is `secure` in production and uses `SameSite=Lax` locally (`SameSite=None` in production).
+## Session Management & Cookie Security
 
-## Session and protected routes
+- On successful authentication (login or email verification), the backend signs a JSON Web Token (JWT) with the user ID in the `sub` claim.
+- The JWT is issued in an **HttpOnly cookie** (`hackbuddy_token`):
+  - `httpOnly: true` (prevents JavaScript access via `document.cookie`)
+  - `secure: process.env.NODE_ENV === 'production'`
+  - `sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'`
+  - `maxAge: 7 * 24 * 60 * 60 * 1000` (7 days)
+- Sensitive authentication tokens are **never stored in `localStorage`**. The frontend relies entirely on HttpOnly cookie persistence with Axios `withCredentials: true` and Socket.IO cookie handshake.
 
-`protect` first checks the cookie, then a `Authorization: Bearer <token>` header. It verifies the JWT, reloads the user without the password, and attaches it to `req.user`. Expired and malformed tokens return 401 responses. The frontend rehydrates its session through `GET /api/auth/me`.
+## Defense-in-Depth XSS Mitigation
 
-Authorization is feature-specific after authentication: team creators decide requests; chat checks conversation membership and a currently shared team; notifications query by the authenticated recipient; profile updates target only `req.user._id`.
-
-## Email verification status
-
-Email verification is **not implemented**. There is no `emailVerified` field, verification-token collection, Nodemailer dependency, SMTP configuration, or verification endpoint. Registration validates the email format but does not verify mailbox ownership.
+We do not make misleading claims of "100% XSS immunity". Instead, HackBuddy adopts realistic defense-in-depth principles:
+1. **HttpOnly Storage:** Storing JWT tokens in HttpOnly cookies prevents an attacker running a malicious script from extracting authentication credentials.
+2. **Server-Side Input Sanitization:** All user inputs (bios, project names, messages, notes) are sanitized on the backend using `stripHtml`, removing `<script>`, `<iframe>`, and HTML markup.
+3. **Safe URL Validation:** External profile URLs (GitHub, LinkedIn, Portfolio) are checked against a whitelist of valid protocols (`http:`, `https:`). Any attempt to pass `javascript:` or `data:` pseudo-protocols is neutralized.
+4. **Content Security Policy (CSP):** Helmet configures secure HTTP response headers, restricting script sources and frame ancestors.
+5. **Constant-Time Timing-Attack Defense:** Dummy bcrypt verification executes when an email is not registered to prevent response-latency user enumeration attacks.

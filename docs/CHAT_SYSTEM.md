@@ -1,19 +1,19 @@
-# Chat System
+# Chat System (Direct & Team Group Chat)
 
-HackBuddy uses Socket.IO on the existing Node HTTP server for direct chat. The browser provides the JWT in `handshake.auth.token` (or may use the existing Bearer/cookie fallback); Socket.IO verifies it before allowing a connection and stores the authenticated ID in `socket.data.userId`.
+HackBuddy implements a real-time messaging architecture using Socket.IO on top of the Express HTTP server, backed by MongoDB for persistence.
 
-Each connection automatically joins `user:<id>`. A client joins `conversation:<id>` only after `conversation:join` verifies it is a participant. A conversation has exactly two participants and a unique sorted `participantKey` to prevent duplicate direct conversations.
+## Architecture
 
-## Persistence and authorization
+- **Direct 1-on-1 Chat:** Supported between users who share at least one accepted team membership.
+- **Team Group Chat:** Supported for all members of an accepted hackathon team and its creator.
+- **Handshake Authentication:** The socket handshake validates user identity via HttpOnly cookies (`hackbuddy_token`) or Bearer headers. Unverified accounts or invalid tokens are rejected before the connection is established.
+- **Partitioned Rooms:** Sockets join isolated rooms:
+  - `user:<userId>` for direct notifications and direct chat routing.
+  - `team:<teamId>` for team group conversations, joined only after server-side roster verification.
 
-`Message` stores conversation, sender, receiver, content, timestamps, and `readAt`. The server derives sender from HTTP/socket authentication and receiver from the conversation; clients cannot supply either. Before every send, the service checks membership and verifies the two users still share a team, which is the accepted-match boundary.
+## Persistence & Validation
 
-## Events
-
-- `conversation:join`, `conversation:leave`
-- `message:send` → `message:new`
-- `messages:read` → `message:read`
-- `typing:start` / `typing:stop` → `typing:update`
-- `presence:update`
-
-The UI debounces typing stop by 1.2 seconds. Presence is held in Socket.IO rooms; `User.lastSeen` is written only after the final active socket disconnects, avoiding database writes for every connection event. Unread counts are derived from unread inbound `Message` records. Chat messages also create a persisted notification for the receiver.
+- `Conversation` models both `direct` and `team` chats.
+- Team chat endpoints (`GET /api/chat/teams/:teamId`, `GET /api/chat/teams/:teamId/messages`, `POST /api/chat/teams/:teamId/messages`) and socket handlers enforce `assertTeamMember`.
+- Messages are sanitized (`stripHtml`), bounded to 2,000 characters, and saved to MongoDB with sender ObjectIds, timestamps, and `readBy` status.
+- Typing indicators use a 1.2-second debounce and are broadcast to room participants without persisting to the database.

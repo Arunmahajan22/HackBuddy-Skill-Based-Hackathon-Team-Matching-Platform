@@ -22,7 +22,7 @@ const respondWithAuth = (res, user, statusCode, customMessage) => {
   const token = createToken(user._id.toString());
   const isProduction = process.env.NODE_ENV === 'production';
 
-  // Set secure HTTP-only cookie (immune to JavaScript XSS access)
+  // Set secure HTTP-only cookie
   res.cookie('hackbuddy_token', token, {
     httpOnly: true,
     secure: isProduction,
@@ -50,7 +50,20 @@ const respondWithAuth = (res, user, statusCode, customMessage) => {
  */
 exports.register = async (req, res, next) => {
   try {
-    const { name, email, password, branch, year, bio, github, skills, interests, preferredRoles, experienceLevel } = req.body;
+    const {
+      name,
+      email,
+      password,
+      branch,
+      year,
+      bio,
+      github,
+      skills,
+      interests,
+      preferredRoles,
+      experienceLevel,
+      availability,
+    } = req.body;
     const normalizedEmail = email.toLowerCase().trim();
 
     const existingUser = await User.findOne({ email: normalizedEmail }).lean();
@@ -74,6 +87,7 @@ exports.register = async (req, res, next) => {
       preferredRoles: Array.isArray(preferredRoles) ? preferredRoles : [],
       experienceLevel,
       isVerified: false,
+      ...(availability !== undefined ? { availability } : {}),
     });
 
     // Generate secure email verification token (stored as SHA-256 hash in DB)

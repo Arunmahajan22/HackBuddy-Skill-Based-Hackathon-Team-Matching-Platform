@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { stripHtml } = require('../utils/sanitize');
 
 const teamSchema = new mongoose.Schema(
   {
@@ -8,6 +9,7 @@ const teamSchema = new mongoose.Schema(
       trim: true,
       minlength: [2, 'Hackathon name must be at least 2 characters.'],
       maxlength: [150, 'Hackathon name cannot exceed 150 characters.'],
+      set: (val) => stripHtml(String(val || '')),
     },
     description: {
       type: String,
@@ -15,6 +17,7 @@ const teamSchema = new mongoose.Schema(
       trim: true,
       minlength: [20, 'Description must be at least 20 characters.'],
       maxlength: [2000, 'Description cannot exceed 2000 characters.'],
+      set: (val) => stripHtml(String(val || '')),
     },
     requiredSkills: {
       type: [String],
@@ -25,7 +28,7 @@ const teamSchema = new mongoose.Schema(
       ],
       set: (skills) =>
         Array.isArray(skills)
-          ? [...new Set(skills.map((skill) => String(skill).trim()).filter(Boolean))]
+          ? [...new Set(skills.map((skill) => stripHtml(String(skill).trim())).filter(Boolean))]
           : [],
     },
     teamSizeLimit: {

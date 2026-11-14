@@ -1,10 +1,23 @@
 import { useEffect, useState } from 'react';
-import { Code2, Save, AlertCircle, Sparkles, ExternalLink, X, UsersRound, Plus } from 'lucide-react';
+import {
+  Code2,
+  Save,
+  AlertCircle,
+  Sparkles,
+  ExternalLink,
+  X,
+  UsersRound,
+  Plus,
+  Calendar,
+  Clock,
+  Globe,
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../lib/api';
 import { Layout } from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
+import { getSafeUrl } from '../lib/safeUrl';
 
 const POPULAR_SKILLS = [
   'React',
@@ -18,6 +31,51 @@ const POPULAR_SKILLS = [
   'GraphQL',
   'Docker',
 ];
+
+const DAYS_OF_WEEK = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+const TIME_SLOTS = [
+  { id: 'mornings', label: 'Mornings (8am - 12pm)' },
+  { id: 'afternoons', label: 'Afternoons (12pm - 5pm)' },
+  { id: 'evenings', label: 'Evenings (5pm - 10pm)' },
+  { id: 'late_night', label: 'Late Night (10pm+)' },
+];
+
+const normalizeAvailabilityState = (raw) => {
+  if (!raw) {
+    return {
+      status: 'open',
+      availableDays: ['Saturday', 'Sunday'],
+      timeSlots: ['evenings'],
+      preferredWorkingHours: '10-20 hrs/week',
+      timezone: 'UTC',
+    };
+  }
+  if (typeof raw === 'string') {
+    return {
+      status: raw || 'open',
+      availableDays: raw === 'weekends' ? ['Saturday', 'Sunday'] : ['Saturday', 'Sunday'],
+      timeSlots: raw === 'evenings' ? ['evenings'] : ['evenings'],
+      preferredWorkingHours: '10-20 hrs/week',
+      timezone: 'UTC',
+    };
+  }
+  return {
+    status: raw.status || 'open',
+    availableDays: Array.isArray(raw.availableDays) && raw.availableDays.length ? raw.availableDays : ['Saturday', 'Sunday'],
+    timeSlots: Array.isArray(raw.timeSlots) && raw.timeSlots.length ? raw.timeSlots : ['evenings'],
+    preferredWorkingHours: raw.preferredWorkingHours || '10-20 hrs/week',
+    timezone: raw.timezone || 'UTC',
+  };
+};
 
 export default function ProfilePage() {
   const { user, updateUser } = useAuth();
@@ -35,17 +93,26 @@ export default function ProfilePage() {
       try {
         const { data } = await api.get('/users/me');
         if (isMounted && data.success && data.user) {
-          setForm(data.user);
+          setForm({
+            ...data.user,
+            availability: normalizeAvailabilityState(data.user.availability),
+          });
         }
       } catch (_error) {
         if (isMounted && user) {
-          setForm(user);
+          setForm({
+            ...user,
+            availability: normalizeAvailabilityState(user.availability),
+          });
         }
       }
     };
 
     fetchProfile();
-    api.get('/teams/joined').then(({ data }) => { if (isMounted) setTeams(data.teams || []); }).catch(() => {});
+    api.get('/teams/joined').then(({ data }) => {
+      if (isMounted) setTeams(data.teams || []);
+    }).catch(() => {});
+
     return () => {
       isMounted = false;
     };
@@ -63,6 +130,30 @@ export default function ProfilePage() {
 
   const updateField = (event) => {
     setForm({ ...form, [event.target.name]: event.target.value });
+  };
+
+  const updateAvailabilityField = (field, value) => {
+    setForm({
+      ...form,
+      availability: {
+        ...form.availability,
+        [field]: value,
+      },
+    });
+  };
+
+  const toggleAvailableDay = (day) => {
+    const current = form.availability?.availableDays || [];
+    const exists = current.includes(day);
+    const updated = exists ? current.filter((d) => d !== day) : [...current, day];
+    updateAvailabilityField('availableDays', updated);
+  };
+
+  const toggleTimeSlot = (slotId) => {
+    const current = form.availability?.timeSlots || [];
+    const exists = current.includes(slotId);
+    const updated = exists ? current.filter((s) => s !== slotId) : [...current, slotId];
+    updateAvailabilityField('timeSlots', updated);
   };
 
   const handleAddSkill = (skillToAdd) => {
@@ -83,9 +174,25 @@ export default function ProfilePage() {
     });
   };
 
-  const updateProject = (index, field, value) => setForm({ ...form, projects: (form.projects || []).map((project, projectIndex) => projectIndex === index ? { ...project, [field]: value } : project) });
-  const addProject = () => setForm({ ...form, projects: [...(form.projects || []), { title: '', description: '', url: '', technologies: [] }] });
-  const removeProject = (index) => setForm({ ...form, projects: (form.projects || []).filter((_, projectIndex) => projectIndex !== index) });
+  const updateProject = (index, field, value) =>
+    setForm({
+      ...form,
+      projects: (form.projects || []).map((project, projectIndex) =>
+        projectIndex === index ? { ...project, [field]: value } : project,
+      ),
+    });
+
+  const addProject = () =>
+    setForm({
+      ...form,
+      projects: [...(form.projects || []), { title: '', description: '', url: '', technologies: [] }],
+    });
+
+  const removeProject = (index) =>
+    setForm({
+      ...form,
+      projects: (form.projects || []).filter((_, projectIndex) => projectIndex !== index),
+    });
 
   const handleKeyDownSkill = (e) => {
     if (e.key === 'Enter' || e.key === ',') {
@@ -114,17 +221,30 @@ export default function ProfilePage() {
         linkedin: form.linkedin?.trim(),
         portfolio: form.portfolio?.trim(),
         hackathonExperience: Number(form.hackathonExperience || 0),
-        availability: form.availability || 'open',
+        availability: form.availability,
         preferredTeamSize: Number(form.preferredTeamSize || 4),
-        projects: (form.projects || []).map((project) => ({ ...project, technologies: Array.isArray(project.technologies) ? project.technologies : String(project.technologies || '').split(',').map((item) => item.trim()).filter(Boolean) })).filter((project) => project.title?.trim()),
+        projects: (form.projects || [])
+          .map((project) => ({
+            ...project,
+            technologies: Array.isArray(project.technologies)
+              ? project.technologies
+              : String(project.technologies || '')
+                  .split(',')
+                  .map((item) => item.trim())
+                  .filter(Boolean),
+          }))
+          .filter((project) => project.title?.trim()),
       };
 
       const { data } = await api.patch('/users/me', payload);
 
       if (data.success && data.user) {
         updateUser(data.user);
-        setForm(data.user);
-        toast('success', 'Profile updated successfully!');
+        setForm({
+          ...data.user,
+          availability: normalizeAvailabilityState(data.user.availability),
+        });
+        toast('success', 'Profile & availability updated successfully!');
       }
     } catch (requestError) {
       const message =
@@ -140,13 +260,13 @@ export default function ProfilePage() {
   // Calculate profile strength
   const calculateStrength = () => {
     let score = 0;
-    if (form.name) score += 20;
-    if (form.branch && form.year) score += 20;
-    if (form.skills?.length > 0) score += 25;
-    if (form.bio) score += 20;
-    if (form.github) score += 15;
+    if (form.name) score += 15;
+    if (form.branch && form.year) score += 15;
+    if (form.skills?.length > 0) score += 20;
+    if (form.bio) score += 15;
+    if (form.github) score += 10;
+    if (form.availability?.status && form.availability?.availableDays?.length) score += 15;
     if (form.projects?.length) score += 10;
-    if (form.linkedin || form.portfolio) score += 10;
     return Math.min(100, score);
   };
 
@@ -160,7 +280,13 @@ export default function ProfilePage() {
           <div className="border-b border-slate-200/80 bg-brand-500/[0.06] p-6 dark:border-white/10 sm:p-8">
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
               <div className="flex items-center gap-4">
-                {form.avatarUrl ? <img src={form.avatarUrl} alt="Profile avatar" className="size-14 rounded-2xl object-cover shadow-md" /> : <span className="grid size-14 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 font-display text-xl font-bold text-white shadow-md shadow-brand-500/25">{form.name?.[0]?.toUpperCase() || 'U'}</span>}
+                {form.avatarUrl ? (
+                  <img src={getSafeUrl(form.avatarUrl)} alt="Profile avatar" className="size-14 rounded-2xl object-cover shadow-md" />
+                ) : (
+                  <span className="grid size-14 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 font-display text-xl font-bold text-white shadow-md shadow-brand-500/25">
+                    {form.name?.[0]?.toUpperCase() || 'U'}
+                  </span>
+                )}
                 <div>
                   <span className="eyebrow block">Maker Profile</span>
                   <h1 className="mt-0.5 font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
@@ -189,7 +315,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Profile Form */}
-          <form onSubmit={handleSubmit} className="space-y-5 p-6 sm:p-8">
+          <form onSubmit={handleSubmit} className="space-y-6 p-6 sm:p-8">
             {error && (
               <div
                 role="alert"
@@ -200,224 +326,505 @@ export default function ProfilePage() {
               </div>
             )}
 
+            {/* Profile Header */}
             <section>
-            <h2 className="mb-3 font-display text-base font-bold">Profile header</h2>
-            <div className="mb-4"><label htmlFor="profile-avatar" className="field-label">Profile photo URL</label><input id="profile-avatar" className="field-input" name="avatarUrl" value={form.avatarUrl || ''} onChange={updateField} placeholder="https://images.example.com/avatar.jpg" /></div>
-            {/* Name and Branch */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="profile-name" className="field-label">
-                  Full Name
+              <h2 className="mb-3 font-display text-base font-bold">Profile header</h2>
+              <div className="mb-4">
+                <label htmlFor="profile-avatar" className="field-label">
+                  Profile photo URL
                 </label>
                 <input
-                  id="profile-name"
+                  id="profile-avatar"
                   className="field-input"
-                  name="name"
-                  value={form.name || ''}
+                  name="avatarUrl"
+                  value={form.avatarUrl || ''}
                   onChange={updateField}
+                  placeholder="https://images.example.com/avatar.jpg"
                 />
               </div>
-              <div>
-                <label htmlFor="profile-branch" className="field-label">
-                  Branch / Department
-                </label>
-                <input
-                  id="profile-branch"
-                  className="field-input"
-                  name="branch"
-                  value={form.branch || ''}
-                  onChange={updateField}
-                />
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="profile-name" className="field-label">
+                    Full Name
+                  </label>
+                  <input
+                    id="profile-name"
+                    className="field-input"
+                    name="name"
+                    value={form.name || ''}
+                    onChange={updateField}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="profile-branch" className="field-label">
+                    Branch / Department
+                  </label>
+                  <input
+                    id="profile-branch"
+                    className="field-input"
+                    name="branch"
+                    value={form.branch || ''}
+                    onChange={updateField}
+                  />
+                </div>
               </div>
-            </div>
             </section>
 
-            <section><h2 className="mb-3 font-display text-base font-bold">Experience & availability</h2>
-            {/* Year and Experience */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="profile-year" className="field-label">
-                  Academic Year
-                </label>
-                <select
-                  id="profile-year"
-                  className="field-input"
-                  name="year"
-                  value={form.year || ''}
-                  onChange={updateField}
-                >
-                  {[1, 2, 3, 4, 5].map((yr) => (
-                    <option key={yr} value={yr}>
-                      Year {yr}
-                    </option>
-                  ))}
-                </select>
+            {/* Availability & Scheduling */}
+            <section className="rounded-2xl border border-brand-500/20 bg-brand-500/[0.03] p-5 dark:border-brand-500/10">
+              <div className="mb-3 flex items-center gap-2">
+                <Calendar className="text-brand-600 dark:text-brand-400" size={18} />
+                <h2 className="font-display text-base font-bold">Availability & Schedule</h2>
+              </div>
+              <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">
+                Specify when you are available to hack. This feeds directly into smart teammate compatibility matching.
+              </p>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div>
+                  <label className="field-label">Collaboration Status</label>
+                  <select
+                    className="field-input"
+                    value={form.availability?.status || 'open'}
+                    onChange={(e) => updateAvailabilityField('status', e.target.value)}
+                  >
+                    <option value="open">Open to collaborate</option>
+                    <option value="weekends">Weekends only</option>
+                    <option value="evenings">Evenings only</option>
+                    <option value="limited">Limited availability</option>
+                    <option value="unavailable">Currently unavailable</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="field-label">Preferred Working Hours</label>
+                  <input
+                    className="field-input"
+                    value={form.availability?.preferredWorkingHours || ''}
+                    onChange={(e) => updateAvailabilityField('preferredWorkingHours', e.target.value)}
+                    placeholder="e.g. 15 hrs/week, 10am-4pm"
+                  />
+                </div>
+
+                <div>
+                  <label className="field-label">Timezone</label>
+                  <input
+                    className="field-input"
+                    value={form.availability?.timezone || 'UTC'}
+                    onChange={(e) => updateAvailabilityField('timezone', e.target.value)}
+                    placeholder="e.g. UTC, EST, PST, IST"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label htmlFor="profile-exp" className="field-label">
-                  Experience Level
+              {/* Available Days */}
+              <div className="mt-4">
+                <label className="field-label flex items-center gap-1.5">
+                  <Clock size={13} /> Available Days
                 </label>
-                <select
-                  id="profile-exp"
-                  className="field-input"
-                  name="experienceLevel"
-                  value={form.experienceLevel || 'beginner'}
-                  onChange={updateField}
-                >
-                  <option value="beginner">Beginner</option>
-                  <option value="intermediate">Intermediate</option>
-                  <option value="advanced">Advanced</option>
-                </select>
-              </div>
-            </div>
-            <div className="mt-4 grid gap-4 sm:grid-cols-3"><div><label className="field-label">Hackathons completed</label><input className="field-input" type="number" min="0" max="100" name="hackathonExperience" value={form.hackathonExperience ?? 0} onChange={updateField} /></div><div><label className="field-label">Availability</label><select className="field-input" name="availability" value={form.availability || 'open'} onChange={updateField}><option value="open">Open to collaborate</option><option value="weekends">Weekends</option><option value="evenings">Evenings</option><option value="limited">Limited</option><option value="unavailable">Unavailable</option></select></div><div><label className="field-label">Ideal team size</label><input className="field-input" type="number" min="2" max="20" name="preferredTeamSize" value={form.preferredTeamSize ?? 4} onChange={updateField} /></div></div>
-            </section>
-
-            <section>
-            <h2 className="mb-3 font-display text-base font-bold">Skills</h2>
-            {/* Interactive Skills Chip Manager */}
-            <div>
-              <label htmlFor="profile-skills-input" className="field-label">
-                Skills & Tech Stack <span className="font-normal text-slate-400 normal-case">(press Enter or comma to add)</span>
-              </label>
-
-              {/* Active Skill Chips */}
-              <div className="mt-2 flex flex-wrap gap-1.5 min-h-8">
-                {form.skills && form.skills.length > 0 ? (
-                  form.skills.map((skill) => (
-                    <span
-                      key={skill}
-                      className="skill-badge text-xs py-1 pl-2.5 pr-1.5 flex items-center gap-1.5 group"
-                    >
-                      <span>{skill}</span>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {DAYS_OF_WEEK.map((day) => {
+                    const active = (form.availability?.availableDays || []).includes(day);
+                    return (
                       <button
+                        key={day}
                         type="button"
-                        onClick={() => handleRemoveSkill(skill)}
-                        className="rounded-full p-0.5 hover:bg-brand-500/20 text-slate-400 hover:text-rose-600"
-                        aria-label={`Remove ${skill}`}
+                        onClick={() => toggleAvailableDay(day)}
+                        className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                          active
+                            ? 'bg-brand-600 text-white shadow-sm shadow-brand-500/20'
+                            : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-white/10 dark:bg-white/5 dark:text-slate-300'
+                        }`}
                       >
-                        <X size={12} />
+                        {day.slice(0, 3)}
                       </button>
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-xs italic text-slate-400">No skills added yet</span>
-                )}
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* Skill Input */}
-              <div className="mt-2.5 flex items-center gap-2">
-                <input
-                  id="profile-skills-input"
-                  className="field-input mt-0 text-xs"
-                  value={newSkillInput}
-                  onChange={(e) => setNewSkillInput(e.target.value)}
-                  onKeyDown={handleKeyDownSkill}
-                  placeholder="Type a skill and press Enter…"
+              {/* Time Slots */}
+              <div className="mt-4">
+                <label className="field-label">Preferred Time Slots</label>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {TIME_SLOTS.map((slot) => {
+                    const active = (form.availability?.timeSlots || []).includes(slot.id);
+                    return (
+                      <button
+                        key={slot.id}
+                        type="button"
+                        onClick={() => toggleTimeSlot(slot.id)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                          active
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-white/10 dark:bg-white/5 dark:text-slate-300'
+                        }`}
+                      >
+                        {slot.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+
+            {/* Experience & Team Preferences */}
+            <section>
+              <h2 className="mb-3 font-display text-base font-bold">Experience & preferences</h2>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="profile-year" className="field-label">
+                    Academic Year
+                  </label>
+                  <select
+                    id="profile-year"
+                    className="field-input"
+                    name="year"
+                    value={form.year || ''}
+                    onChange={updateField}
+                  >
+                    {[1, 2, 3, 4, 5].map((yr) => (
+                      <option key={yr} value={yr}>
+                        Year {yr}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="profile-exp" className="field-label">
+                    Experience Level
+                  </label>
+                  <select
+                    id="profile-exp"
+                    className="field-input"
+                    name="experienceLevel"
+                    value={form.experienceLevel || 'beginner'}
+                    onChange={updateField}
+                  >
+                    <option value="beginner">Beginner</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="advanced">Advanced</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="field-label">Hackathons completed</label>
+                  <input
+                    className="field-input"
+                    type="number"
+                    min="0"
+                    max="100"
+                    name="hackathonExperience"
+                    value={form.hackathonExperience ?? 0}
+                    onChange={updateField}
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Ideal team size</label>
+                  <input
+                    className="field-input"
+                    type="number"
+                    min="2"
+                    max="20"
+                    name="preferredTeamSize"
+                    value={form.preferredTeamSize ?? 4}
+                    onChange={updateField}
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* Skills */}
+            <section>
+              <h2 className="mb-3 font-display text-base font-bold">Skills</h2>
+              <div>
+                <label htmlFor="profile-skills-input" className="field-label">
+                  Skills & Tech Stack <span className="font-normal text-slate-400 normal-case">(press Enter or comma to add)</span>
+                </label>
+
+                {/* Active Skill Chips */}
+                <div className="mt-2 flex flex-wrap gap-1.5 min-h-8">
+                  {form.skills && form.skills.length > 0 ? (
+                    form.skills.map((skill) => (
+                      <span
+                        key={skill}
+                        className="skill-badge text-xs py-1 pl-2.5 pr-1.5 flex items-center gap-1.5 group"
+                      >
+                        <span>{skill}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSkill(skill)}
+                          className="rounded-full p-0.5 hover:bg-brand-500/20 text-slate-400 hover:text-rose-600"
+                          aria-label={`Remove ${skill}`}
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs italic text-slate-400">No skills added yet</span>
+                  )}
+                </div>
+
+                {/* Skill Input */}
+                <div className="mt-2.5 flex items-center gap-2">
+                  <input
+                    id="profile-skills-input"
+                    className="field-input mt-0 text-xs"
+                    value={newSkillInput}
+                    onChange={(e) => setNewSkillInput(e.target.value)}
+                    onKeyDown={handleKeyDownSkill}
+                    placeholder="Type a skill and press Enter…"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAddSkill()}
+                    className="secondary-button text-xs py-2 px-3 shrink-0"
+                  >
+                    Add Skill
+                  </button>
+                </div>
+
+                {/* Suggested Skills */}
+                <div className="mt-2 flex flex-wrap items-center gap-1">
+                  <span className="text-[11px] text-slate-400">Quick add:</span>
+                  {POPULAR_SKILLS.filter((s) => !form.skills?.includes(s)).slice(0, 6).map((skill) => (
+                    <button
+                      key={skill}
+                      type="button"
+                      onClick={() => handleAddSkill(skill)}
+                      className="rounded-md border border-slate-200 bg-slate-100/70 px-2 py-0.5 text-[11px] font-medium text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300 dark:hover:border-brand-400/30 dark:hover:bg-brand-400/10 dark:hover:text-brand-300"
+                    >
+                      + {skill}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            {/* Hackathon Interests & Preferred Roles */}
+            <section>
+              <h2 className="mb-3 font-display text-base font-bold">Hackathon interests & preferred role</h2>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="profile-interests" className="field-label">
+                    Hackathon interests <span className="font-normal text-slate-400 normal-case">(comma separated)</span>
+                  </label>
+                  <input
+                    id="profile-interests"
+                    className="field-input"
+                    value={(form.interests || []).join(', ')}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        interests: event.target.value.split(',').map((item) => item.trim()).filter(Boolean),
+                      })
+                    }
+                    placeholder="AI, climate, fintech"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="profile-roles" className="field-label">
+                    Preferred roles <span className="font-normal text-slate-400 normal-case">(comma separated)</span>
+                  </label>
+                  <input
+                    id="profile-roles"
+                    className="field-input"
+                    value={(form.preferredRoles || []).join(', ')}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        preferredRoles: event.target.value.split(',').map((item) => item.trim()).filter(Boolean),
+                      })
+                    }
+                    placeholder="Frontend, backend, AI/ML"
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* Bio */}
+            <section>
+              <h2 className="mb-3 font-display text-base font-bold">About</h2>
+              <div>
+                <label htmlFor="profile-bio" className="field-label">
+                  Bio / About You <span className="font-normal text-slate-400 normal-case">(max 500 characters)</span>
+                </label>
+                <textarea
+                  id="profile-bio"
+                  className="field-input min-h-24 resize-y text-xs leading-relaxed"
+                  name="bio"
+                  maxLength={500}
+                  value={form.bio || ''}
+                  onChange={updateField}
+                  placeholder="Share your background, recent hackathon projects, and what roles you excel at…"
                 />
-                <button
-                  type="button"
-                  onClick={() => handleAddSkill()}
-                  className="secondary-button text-xs py-2 px-3 shrink-0"
-                >
-                  Add Skill
+              </div>
+            </section>
+
+            {/* Professional Links */}
+            <section>
+              <h2 className="mb-3 font-display text-base font-bold">Professional links</h2>
+              <div>
+                <label htmlFor="profile-github" className="field-label">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Code2 size={14} /> GitHub Profile URL
+                  </span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="profile-github"
+                    className="field-input text-xs"
+                    name="github"
+                    value={form.github || ''}
+                    onChange={updateField}
+                    placeholder="https://github.com/your-username"
+                  />
+                  {form.github && getSafeUrl(form.github) !== '#' && (
+                    <a
+                      href={getSafeUrl(form.github)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="icon-button shrink-0"
+                      title="Open GitHub profile in new tab"
+                    >
+                      <ExternalLink size={16} />
+                    </a>
+                  )}
+                </div>
+              </div>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="field-label">
+                    <ExternalLink size={14} className="mr-1 inline" />
+                    LinkedIn URL
+                  </label>
+                  <input
+                    className="field-input"
+                    name="linkedin"
+                    value={form.linkedin || ''}
+                    onChange={updateField}
+                    placeholder="https://linkedin.com/in/you"
+                  />
+                </div>
+                <div>
+                  <label className="field-label">
+                    <Globe size={14} className="mr-1 inline" />
+                    Portfolio URL
+                  </label>
+                  <input
+                    className="field-input"
+                    name="portfolio"
+                    value={form.portfolio || ''}
+                    onChange={updateField}
+                    placeholder="https://your-site.dev"
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* Projects */}
+            <section>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="font-display text-base font-bold">Projects</h2>
+                <button type="button" onClick={addProject} className="secondary-button px-3 py-1.5 text-xs">
+                  <Plus size={13} /> Add project
                 </button>
               </div>
-
-              {/* Suggested Skills */}
-              <div className="mt-2 flex flex-wrap items-center gap-1">
-                <span className="text-[11px] text-slate-400">Quick add:</span>
-                {POPULAR_SKILLS.filter((s) => !form.skills?.includes(s)).slice(0, 6).map((skill) => (
-                  <button
-                    key={skill}
-                    type="button"
-                    onClick={() => handleAddSkill(skill)}
-                    className="rounded-md border border-slate-200 bg-slate-100/70 px-2 py-0.5 text-[11px] font-medium text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300 dark:hover:border-brand-400/30 dark:hover:bg-brand-400/10 dark:hover:text-brand-300"
-                  >
-                    + {skill}
-                  </button>
+              <div className="space-y-3">
+                {(form.projects || []).map((project, index) => (
+                  <div key={project._id || index} className="rounded-xl border border-slate-200 p-4 dark:border-white/10">
+                    <div className="flex gap-2">
+                      <input
+                        className="field-input"
+                        value={project.title || ''}
+                        onChange={(event) => updateProject(index, 'title', event.target.value)}
+                        placeholder="Project name"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeProject(index)}
+                        className="icon-button shrink-0 text-rose-500"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                    <textarea
+                      className="field-input mt-2 min-h-20 text-xs"
+                      value={project.description || ''}
+                      onChange={(event) => updateProject(index, 'description', event.target.value)}
+                      maxLength={500}
+                      placeholder="What did you build and what was your contribution?"
+                    />
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <input
+                        className="field-input text-xs"
+                        value={project.url || ''}
+                        onChange={(event) => updateProject(index, 'url', event.target.value)}
+                        placeholder="https://project.example"
+                      />
+                      <input
+                        className="field-input text-xs"
+                        value={
+                          Array.isArray(project.technologies)
+                            ? project.technologies.join(', ')
+                            : project.technologies || ''
+                        }
+                        onChange={(event) => updateProject(index, 'technologies', event.target.value)}
+                        placeholder="React, Node.js, MongoDB"
+                      />
+                    </div>
+                  </div>
                 ))}
-              </div>
-            </div>
-            </section>
-
-            <section><h2 className="mb-3 font-display text-base font-bold">Hackathon interests & preferred role</h2>
-            {/* Bio */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="profile-interests" className="field-label">Hackathon interests <span className="font-normal text-slate-400 normal-case">(comma separated)</span></label>
-                <input id="profile-interests" className="field-input" value={(form.interests || []).join(', ')} onChange={(event) => setForm({ ...form, interests: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="AI, climate, fintech" />
-              </div>
-              <div>
-                <label htmlFor="profile-roles" className="field-label">Preferred roles <span className="font-normal text-slate-400 normal-case">(comma separated)</span></label>
-                <input id="profile-roles" className="field-input" value={(form.preferredRoles || []).join(', ')} onChange={(event) => setForm({ ...form, preferredRoles: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="Frontend, product" />
-              </div>
-            </div>
-            </section>
-
-            <section><h2 className="mb-3 font-display text-base font-bold">About</h2>
-            {/* Bio */}
-            <div>
-              <label htmlFor="profile-bio" className="field-label">
-                Bio / About You <span className="font-normal text-slate-400 normal-case">(max 500 characters)</span>
-              </label>
-              <textarea
-                id="profile-bio"
-                className="field-input min-h-28 resize-y text-xs leading-relaxed"
-                name="bio"
-                maxLength={500}
-                value={form.bio || ''}
-                onChange={updateField}
-                placeholder="Share your background, recent hackathon projects, and what roles you excel at…"
-              />
-            </div>
-            </section>
-
-            <section><h2 className="mb-3 font-display text-base font-bold">Professional links</h2>
-            {/* GitHub */}
-            <div>
-              <label htmlFor="profile-github" className="field-label">
-                <span className="inline-flex items-center gap-1.5">
-                  <Code2 size={14} /> GitHub Profile URL
-                </span>
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  id="profile-github"
-                  className="field-input text-xs"
-                  name="github"
-                  value={form.github || ''}
-                  onChange={updateField}
-                  placeholder="https://github.com/your-username"
-                />
-                {form.github && (
-                  <a
-                    href={form.github.startsWith('http') ? form.github : `https://${form.github}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="icon-button shrink-0"
-                    title="Open GitHub profile in new tab"
-                  >
-                    <ExternalLink size={16} />
-                  </a>
+                {!(form.projects || []).length && (
+                  <p className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-xs text-slate-500 dark:border-white/10">
+                    Showcase a project to make your builder profile more compelling.
+                  </p>
                 )}
               </div>
-            </div>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2"><div><label className="field-label"><ExternalLink size={14} className="mr-1 inline" />LinkedIn URL</label><input className="field-input" name="linkedin" value={form.linkedin || ''} onChange={updateField} placeholder="https://linkedin.com/in/you" /></div><div><label className="field-label"><ExternalLink size={14} className="mr-1 inline" />Portfolio URL</label><input className="field-input" name="portfolio" value={form.portfolio || ''} onChange={updateField} placeholder="https://your-site.dev" /></div></div>
             </section>
 
-            <section><div className="mb-3 flex items-center justify-between"><h2 className="font-display text-base font-bold">Projects</h2><button type="button" onClick={addProject} className="secondary-button px-3 py-1.5 text-xs"><Plus size={13} /> Add project</button></div><div className="space-y-3">{(form.projects || []).map((project, index) => <div key={project._id || index} className="rounded-xl border border-slate-200 p-4 dark:border-white/10"><div className="flex gap-2"><input className="field-input" value={project.title || ''} onChange={(event) => updateProject(index, 'title', event.target.value)} placeholder="Project name" /><button type="button" onClick={() => removeProject(index)} className="icon-button shrink-0 text-rose-500"><X size={15} /></button></div><textarea className="field-input mt-2 min-h-20 text-xs" value={project.description || ''} onChange={(event) => updateProject(index, 'description', event.target.value)} maxLength={500} placeholder="What did you build and what was your contribution?" /><div className="mt-2 grid gap-2 sm:grid-cols-2"><input className="field-input text-xs" value={project.url || ''} onChange={(event) => updateProject(index, 'url', event.target.value)} placeholder="https://project.example" /><input className="field-input text-xs" value={Array.isArray(project.technologies) ? project.technologies.join(', ') : project.technologies || ''} onChange={(event) => updateProject(index, 'technologies', event.target.value)} placeholder="React, Node.js, MongoDB" /></div></div>)}{!(form.projects || []).length && <p className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-xs text-slate-500 dark:border-white/10">Showcase a project to make your portfolio more convincing.</p>}</div></section>
+            {/* Quick Links */}
+            <section className="grid gap-4 lg:grid-cols-2">
+              <div className="rounded-xl border border-brand-500/20 bg-brand-500/5 p-4">
+                <div className="flex items-center gap-2 text-brand-700 dark:text-brand-300">
+                  <Sparkles size={16} />
+                  <h2 className="font-bold text-sm">Smart Teammate Matching</h2>
+                </div>
+                <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
+                  Your skills, roles, and schedule availability power mutual compatibility recommendations.
+                </p>
+                <Link to="/matches" className="mt-3 inline-flex text-xs font-bold text-brand-600 hover:underline">
+                  View smart matches →
+                </Link>
+              </div>
 
-            <section className="grid gap-4 lg:grid-cols-2"><div className="rounded-xl border border-brand-500/20 bg-brand-500/5 p-4"><div className="flex items-center gap-2 text-brand-700 dark:text-brand-300"><Sparkles size={16} /><h2 className="font-bold text-sm">Match compatibility</h2></div><p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Your skills, interests, role, and experience power complementary teammate recommendations.</p><Link to="/matches" className="mt-3 inline-flex text-xs font-bold text-brand-600 hover:underline">View smart matches →</Link></div><div className="rounded-xl border border-slate-200 p-4 dark:border-white/10"><div className="flex items-center gap-2"><UsersRound size={16} className="text-brand-600" /><h2 className="font-bold text-sm">Team information</h2></div>{teams.length ? <div className="mt-2 space-y-1.5">{teams.slice(0, 3).map((team) => <p key={team._id} className="text-xs text-slate-600 dark:text-slate-300"><b>{team.hackathonName}</b> · {team.members?.length || 0}/{team.teamSizeLimit} members</p>)}</div> : <p className="mt-2 text-xs text-slate-500">You have not joined a team yet.</p>}</div></section>
+              <div className="rounded-xl border border-slate-200 p-4 dark:border-white/10">
+                <div className="flex items-center gap-2">
+                  <UsersRound size={16} className="text-brand-600" />
+                  <h2 className="font-bold text-sm">Joined Teams</h2>
+                </div>
+                {teams.length ? (
+                  <div className="mt-2 space-y-1.5">
+                    {teams.slice(0, 3).map((team) => (
+                      <p key={team._id} className="text-xs text-slate-600 dark:text-slate-300">
+                        <b>{team.hackathonName}</b> · {team.members?.length || 0}/{team.teamSizeLimit} members
+                      </p>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-500">You have not joined a team yet.</p>
+                )}
+              </div>
+            </section>
 
             {/* Submit Button */}
             <div className="pt-2">
-              <button
-                disabled={saving}
-                className="primary-button w-full sm:w-auto"
-                type="submit"
-              >
+              <button disabled={saving} className="primary-button w-full sm:w-auto" type="submit">
                 <Save size={15} />
                 <span>{saving ? 'Saving changes…' : 'Save Profile Changes'}</span>
               </button>

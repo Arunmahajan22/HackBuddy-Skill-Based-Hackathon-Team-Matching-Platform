@@ -1,15 +1,19 @@
 # Matching Algorithm
 
-Smart Match recommendations come from `GET /api/users/recommendations`, not frontend scoring. The backend normalizes skills, interests, and preferred roles, infers broad role families, calculates a deterministic 0–100 score, returns reasons, then sorts candidates descending.
+Smart Match recommendations come from `GET /api/users/recommendations`, evaluated deterministically on the server. The algorithm pairs builders based on both technical capabilities and schedule compatibility.
 
-| Signal | Maximum | Behavior |
+## Scoring Breakdown (0–100 Scale)
+
+| Signal | Maximum Score | Behavior |
 | --- | ---: | --- |
-| Complementary roles | 50 | Rewards a candidate role absent from the current user, e.g. frontend + backend. |
-| New skills | 10 | Rewards skills the candidate brings that the user does not list. |
-| Shared interests | 20 | Rewards overlapping hackathon themes. |
-| Shared skills | 5 | Gives a small fluency signal but does not dominate complements. |
-| Experience compatibility | 10 | Gives points for equal or adjacent experience levels. |
+| Complementary roles | +35 | Rewards a candidate role absent from the current user (e.g. frontend + backend, or AI/ML + DevOps). |
+| Availability compatibility | +25 | Rewards matching status (`open`), overlapping days of week, and shared working hours. |
+| Shared hackathon interests | +15 | Rewards overlapping project themes (AI, Web3, FinTech, etc.). |
+| New complementary skills | +10 | Rewards skills the candidate brings that the user does not list. |
+| Experience compatibility | +10 | Rewards equal or adjacent experience levels. |
+| Shared skills | +5 | Small collaboration baseline. |
+| Unavailable penalty | -25 | Heavy penalty if the candidate's status is set to `unavailable`. |
 
-For `n` users with at most `s` profile terms, feature calculation is `O(n × s)` and ranking is `O(n log n)`. A 60-second per-process cache avoids recalculation on every page load and is cleared after profile updates.
+## Explainable Output
 
-This is explainable but heuristic: it does not know communication style, actual schedule quality, or unlisted capabilities. A future ML approach could use accepted requests and user feedback to learn weights, while retaining explanation and fairness controls.
+The algorithm never produces an opaque number without context. Each calculation produces transparent, human-readable reasons returned alongside the score (e.g. *"Available on weekdays"*, *"Matching working hours"*, *"Complementary Frontend + Backend strengths"*), allowing users to make informed teammate decisions.

@@ -1,49 +1,63 @@
 # Real-time Chat API and Socket.IO Events
 
-Chat extends the existing JWT-authenticated Express, Socket.IO, and MongoDB architecture. It is intentionally limited to two users that are current members of at least one common team. An accepted join request adds the requester to `Team.members`, so acceptance immediately becomes the authorization grant; there is no second, duplicative match table.
+Chat in HackBuddy supports both **1-on-1 Direct Messaging** between accepted teammates and **Team Group Chat** for all verified members of a hackathon team.
 
-## Database design
+## Database Design
 
-- `Conversation` stores exactly two `participants`, the normalized unique `participantKey`, and a denormalized last-message summary for fast sidebar ordering.
-- `Message` stores `conversation`, server-derived `sender` and `receiver`, `content`, `createdAt`, and nullable `readAt`.
-- `Conversation.participantKey` is unique, preventing duplicate direct conversations even under simultaneous creation. `Message` indexes support conversation history and unread-count queries.
-- `User.lastSeen` is only written when the user's last active socket disconnects. Current presence stays in Socket.IO's in-memory rooms, avoiding a database update for every presence event.
+- `Conversation`:
+  - `type`: `'direct' | 'team'`
+  - `participants`: Array of User ObjectIds (exactly 2 for direct chats, all active members + creator for team chats).
+  - `team`: ObjectId reference to `Team` (for `type: 'team'`).
+  - `participantKey`: Sparse unique compound string for direct conversations to prevent duplicates under race conditions.
+  - `lastMessage`: Denormalized summary (`text`, `sender`, `createdAt`) for rapid sidebar rendering without secondary lookups.
+- `Message`:
+  - `conversation`: ObjectId reference to `Conversation`.
+  - `team`: Optional ObjectId reference to `Team` for team chat messages.
+  - `sender`: ObjectId reference to `User` (strictly derived server-side from session).
+  - `receiver`: Optional ObjectId reference to `User` (populated for direct messages).
+  - `content`: Sanitized message text (HTML tags stripped, control characters removed, 1–2000 chars).
+  - `readBy`: Array of user ObjectIds who have read the message (for group chats).
+  - `readAt`: Nullable timestamp for 1-on-1 read receipts.
+- Presence:
+  - Online/offline presence is maintained in Socket.IO's in-memory room tracking. `User.lastSeen` is only written when the user's last active socket disconnects, avoiding excessive database writes.
 
-## REST API
+## REST API Endpoints
 
-All endpoints are authenticated through the existing `protect` middleware (cookie or Bearer JWT).
+All endpoints require authentication via the `protect` middleware (HttpOnly cookie or Bearer JWT).
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/api/chat/conversations` | Sidebar metadata, unread counts, latest previews, and presence |
-| POST | `/api/chat/conversations` | Opens/gets a direct conversation; body: `{ userId }` |
-| GET | `/api/chat/conversations/:conversationId/messages?limit=50` | Reads the most recent 1–100 messages |
-| POST | `/api/chat/conversations/:conversationId/messages` | Sends persisted message; body: `{ content }` |
-| POST | `/api/chat/conversations/:conversationId/read` | Marks unread inbound messages read |
+| Method | Path | Authorization | Purpose |
+| --- | --- | --- | --- |
+| GET | `/api/chat/conversations` | Protected | Sidebar metadata, unread counts, latest previews, and presence |
+| POST | `/api/chat/conversations` | Protected | Opens/retrieves a direct conversation; body: `{ userId }` (requires shared team) |
+| GET | `/api/chat/conversations/:id/messages?limit=50` | Protected (Participant) | Reads recent 1–100 messages for a conversation |
+| POST | `/api/chat/conversations/:id/messages` | Protected (Participant) | Sends and persists direct message; body: `{ content }` |
+| POST | `/api/chat/conversations/:id/read` | Protected (Participant) | Marks unread inbound messages read |
+| GET | `/api/chat/teams/:teamId` | Protected (Team Member) | Retrieves or creates group conversation for an authorized team |
+| GET | `/api/chat/teams/:teamId/messages?limit=50` | Protected (Team Member) | Reads recent 1–100 messages for a team chat |
+| POST | `/api/chat/teams/:teamId/messages` | Protected (Team Member) | Sends and persists message to team chat; body: `{ content }` |
 
-All conversation routes verify membership. Creating and sending additionally verify that both people still share a team. Content is trimmed, stripped of control characters, must be non-empty, and is capped at 2,000 characters. Sender and receiver are always derived server-side.
+All routes strictly verify membership via `assertTeamMember` or participant validation. Attempting to access a team chat without being a creator or member returns `403 Forbidden`.
 
-## Socket.IO
+## Socket.IO Real-Time Events
 
-The existing socket handshake accepts the same JWT from `auth.token`, `Authorization: Bearer`, or the `hackbuddy_token` cookie. The server verifies it before connection and places the socket only in its authenticated `user:<id>` room. A client cannot choose its identity or private user room.
+The socket handshake authenticates via the `hackbuddy_token` cookie or Bearer token, sets `socket.data.userId`, and auto-joins the private room `user:<userId>`.
 
+### Direct Chat Events
 | Direction | Event | Payload | Notes |
 | --- | --- | --- | --- |
-| client → server | `conversation:join` | `conversationId` | Membership is checked before joining `conversation:<id>` |
-| client → server | `conversation:leave` | `conversationId` | Leaves active room |
-| client → server | `message:send` | `{ conversationId, content }` | Persists first, emits only after success; acknowledgment returns result |
-| server → client | `message:new` | `{ conversationId, message }` | Delivered to active conversation and recipient private room |
-| client → server | `messages:read` | `{ conversationId }` | Marks inbound messages read |
-| server → client | `message:read` | `{ conversationId, readerId, readAt }` | Read receipt signal |
-| client → server | `typing:start` / `typing:stop` | `{ conversationId }` | Client uses a 1.2-second debounce; events are not persisted |
-| server → client | `typing:update` | `{ conversationId, userId, isTyping }` | Sent only to other sockets in room |
-| server → client | `presence:update` | `{ userId, isOnline, lastSeen }` | Contacts receive online/offline changes |
+| client → server | `conversation:join` | `conversationId` | Checks conversation participant membership |
+| client → server | `conversation:leave` | `conversationId` | Leaves `conversation:<id>` room |
+| client → server | `message:send` | `{ conversationId, content }` | Sanitizes, persists to DB, emits to conversation & recipient room |
+| server → client | `message:new` | `{ conversationId, message }` | Delivered to room and recipient |
+| client → server | `typing:start` / `stop` | `{ conversationId }` | 1.2-second debounce; broadcasts `typing:update` |
+| server → client | `presence:update` | `{ userId, isOnline, lastSeen }` | Real-time presence updates |
 
-Socket send, typing, read, and room join handlers independently recheck conversation membership. This means a forged room ID or sender ID cannot insert into or observe someone else's chat.
-
-## Manual two-user verification flow
-
-1. Register a creator and a second user. The creator creates a team; the second user applies; the creator accepts.
-2. On the creator dashboard, select **Message teammate**. Verify the chat opens; no chat should open before acceptance or with an unrelated account.
-3. Open the same chat from the second user (or a second browser session), send messages in both directions, and verify instant delivery, persistence after refresh, sidebar preview, and unread badge.
-4. Type without sending and verify the indicator clears shortly after stopping. Close the second session and verify it shows offline/last seen; reconnect and verify online.
+### Team Group Chat Events
+| Direction | Event | Payload | Notes |
+| --- | --- | --- | --- |
+| client → server | `team:join` | `teamId` | Backend checks `Team.members` & `creator` before joining `team:<teamId>` |
+| client → server | `team:leave` | `teamId` | Leaves `team:<teamId>` room |
+| client → server | `team:message:send` | `{ teamId, content }` | Validates membership, sanitizes text, persists to DB, broadcasts to team |
+| server → client | `team:message:new` | `{ teamId, conversationId, message }` | Delivered in real-time to all online team members |
+| client → server | `team:typing:start` / `stop` | `teamId` | Broadcasts typing indicators to team room |
+| server → client | `team:typing:update` | `{ teamId, userId, isTyping }` | Sent to other active team members in room |

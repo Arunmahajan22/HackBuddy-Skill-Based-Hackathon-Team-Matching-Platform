@@ -39,11 +39,23 @@ app.use(
   }),
 );
 
-// CORS configuration supporting credentials (cookies)
-const allowedOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
+// CORS configuration supporting credentials (cookies) with strict origin whitelisting
+const getAllowedOrigins = () => {
+  const originEnv = process.env.CORS_ORIGIN || 'http://localhost:5173';
+  return originEnv.split(',').map((o) => o.trim()).filter(Boolean);
+};
+const allowedOrigins = getAllowedOrigins();
+
 app.use(
   cors({
-    origin: allowedOrigin,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, server-to-server) or in whitelist
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('CORS origin access denied.'));
+      }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],

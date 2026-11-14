@@ -14,10 +14,11 @@ export function AuthProvider({ children }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
 
-  const persistAuth = useCallback(({ token, user: nextUser }) => {
-    if (token) {
-      localStorage.setItem('hackbuddy_token', token);
-    }
+  // Authentication uses secure HttpOnly cookies set by the backend.
+  // Sensitive JWT tokens are NEVER stored in localStorage to protect against XSS token theft.
+  const persistAuth = useCallback(({ user: nextUser }) => {
+    // Clean up any legacy tokens stored in localStorage
+    localStorage.removeItem('hackbuddy_token');
     if (nextUser) {
       localStorage.setItem('hackbuddy_user', JSON.stringify(nextUser));
       setUser(nextUser);
@@ -30,7 +31,7 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
-  // Rehydrate authenticated session from server on application boot
+  // Rehydrate authenticated session from server on application boot using HttpOnly cookie
   useEffect(() => {
     let isMounted = true;
 
@@ -70,7 +71,7 @@ export function AuthProvider({ children }) {
     setIsLoading(true);
     try {
       const { data } = await api.post('/auth/login', credentials);
-      if (data.token && data.user) {
+      if (data.user) {
         persistAuth(data);
       }
       return data;
@@ -83,7 +84,7 @@ export function AuthProvider({ children }) {
     setIsLoading(true);
     try {
       const { data } = await api.post('/auth/register', profile);
-      if (data.token && data.user) {
+      if (data.user) {
         persistAuth(data);
       }
       return data;

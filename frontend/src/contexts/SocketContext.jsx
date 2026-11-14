@@ -45,20 +45,28 @@ export function SocketProvider({ children }) {
   const markNotificationRead = useCallback(async (id) => {
     try {
       const { data } = await api.patch(`/notifications/${id}/read`);
-      setInboxNotifications((items) => items.map((item) => item._id === id ? data.notification : item));
+      setInboxNotifications((items) => items.map((item) => (item._id === id ? data.notification : item)));
       setUnreadNotificationCount((count) => Math.max(0, count - 1));
-    } catch (_error) { /* keep notification unread when the request fails */ }
+    } catch (_error) {
+      /* keep notification unread when the request fails */
+    }
   }, []);
 
   const markAllNotificationsRead = useCallback(async () => {
     try {
       await api.patch('/notifications/read-all');
-      setInboxNotifications((items) => items.map((item) => item.readAt ? item : { ...item, readAt: new Date().toISOString() }));
+      setInboxNotifications((items) =>
+        items.map((item) => (item.readAt ? item : { ...item, readAt: new Date().toISOString() })),
+      );
       setUnreadNotificationCount(0);
-    } catch (_error) { /* preserve current state on failure */ }
+    } catch (_error) {
+      /* preserve current state on failure */
+    }
   }, []);
 
-  useEffect(() => { loadNotifications(); }, [loadNotifications]);
+  useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications]);
 
   useEffect(() => {
     if (!isAuthenticated || !user) {
@@ -72,10 +80,10 @@ export function SocketProvider({ children }) {
     }
 
     const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
-    const token = localStorage.getItem('hackbuddy_token');
 
+    // WebSocket handshake sends HttpOnly cookie automatically with withCredentials: true.
+    // No sensitive token is read from or stored in localStorage.
     const socket = io(socketUrl, {
-      auth: { token },
       withCredentials: true,
       reconnection: true,
       reconnectionAttempts: 5,
@@ -89,25 +97,25 @@ export function SocketProvider({ children }) {
     setConnectionState('connecting');
 
     socket.on('connect', () => {
-      // Authenticated socket automatically joins user:<userId> on server
       setConnectionState('connected');
     });
 
     socket.on('connect_error', (_err) => {
-      // Reconnection handled automatically by socket.io-client
       setConnectionState('reconnecting');
     });
     socket.on('disconnect', () => setConnectionState('reconnecting'));
 
-    socket.on('request:created', (payload) => {
+    socket.on('request:created', (_payload) => {
       setEventVersion((v) => v + 1);
     });
 
-    socket.on('request:updated', (payload) => {
+    socket.on('request:updated', (_payload) => {
       setEventVersion((v) => v + 1);
     });
     socket.on('notification:new', (notification) => {
-      setInboxNotifications((items) => [notification, ...items.filter((item) => item._id !== notification._id)].slice(0, 30));
+      setInboxNotifications((items) =>
+        [notification, ...items.filter((item) => item._id !== notification._id)].slice(0, 30),
+      );
       setUnreadNotificationCount((count) => count + (notification.readAt ? 0 : 1));
       toast(notification.type === 'request_accepted' ? 'success' : 'info', notification.title);
     });
@@ -140,7 +148,19 @@ export function SocketProvider({ children }) {
       eventVersion,
       toast,
     }),
-    [socket, connectionState, notifications, inboxNotifications, unreadNotificationCount, eventVersion, dismissNotification, toast, loadNotifications, markNotificationRead, markAllNotificationsRead],
+    [
+      socket,
+      connectionState,
+      notifications,
+      inboxNotifications,
+      unreadNotificationCount,
+      eventVersion,
+      dismissNotification,
+      toast,
+      loadNotifications,
+      markNotificationRead,
+      markAllNotificationsRead,
+    ],
   );
 
   return (

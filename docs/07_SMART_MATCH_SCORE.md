@@ -1,31 +1,32 @@
 # Smart Match Score
 
-`GET /api/users/recommendations?limit=20` returns authenticated users with public profile data only, plus `matchScore`, `reasons`, and `strongestComplementarySkills`. It never returns email, password, authentication data, timestamps, or other internal fields.
+`GET /api/users/recommendations?limit=20` returns authenticated users with public profile data, plus `matchScore`, `reasons`, `strongestComplementarySkills`, and structured `availabilityMatch` data. It never returns sensitive fields such as email, password hashes, or verification tokens.
 
 ## Algorithm
 
-The score is deterministic and clamped to 0–100. The important design choice is that a missing role is more valuable than another copy of the same role.
+The score is deterministic and clamped to 0–100. It evaluates both **technical skill complementarity** and **schedule availability compatibility**.
 
-| Factor | Maximum | Purpose |
+| Factor | Maximum Contribution | Purpose |
 | --- | ---: | --- |
-| Complementary inferred/preferred roles | 50 | Rewards a candidate who fills a role absent from your stack, such as frontend + backend. |
-| New complementary skills | 10 | Rewards useful skills the candidate brings that you do not list. |
-| Shared hackathon interests | 20 | Rewards common project themes such as AI or climate. |
-| Shared skills | 5 | Gives a small collaboration signal, without letting identical stacks dominate. |
-| Experience compatibility | 10 | Gives credit for equal or adjacent experience levels. |
+| Complementary inferred/preferred roles | +35 | Rewards a candidate who fills a role absent from your stack (e.g., frontend + backend, or AI/ML + DevOps). |
+| Availability compatibility | +25 | Rewards schedule alignment (status `open`, overlapping available days of the week, matching preferred working hours, and time slot flexibility). |
+| Shared hackathon interests | +15 | Rewards common project themes such as AI, Web3, FinTech, or ClimateTech. |
+| New complementary skills | +10 | Rewards useful skills the candidate brings that you do not list. |
+| Experience compatibility | +10 | Gives credit for equal or adjacent experience levels (Beginner, Intermediate, Advanced). |
+| Shared skills | +5 | Gives a small collaboration signal without letting identical stacks dominate. |
+| Unavailable penalty | -25 | Heavily penalizes candidates marked `unavailable` with an explicit reason. |
 
-Roles are inferred from known skill families (frontend, backend, AI/ML, design, DevOps, mobile, blockchain) and may also be supplied in `preferredRoles`. Optional `interests` and `preferredRoles` were added to the existing user profile so members can make recommendations more meaningful. Availability is not scored because HackBuddy does not currently collect it.
+### Availability Scoring Breakdown
+- **Status:** Candidate with `open` receives +5 bonus; candidate with `busy` receives +1; candidate with `unavailable` receives -25 penalty.
+- **Available Days Overlap:** Jaccard similarity across days (`monday` through `sunday`). Overlapping days earn up to +8 points.
+- **Working Hours & Time Slots:** Matching preferred working hours (`morning`, `afternoon`, `evening`, `night`, `flexible`) contributes up to +8 points. Overlapping time slots add up to +4 points.
+- **Human-Readable Reasons:** Every positive score factor produces an explainable reason, such as:
+  - *"Complementary Frontend + Backend strengths"*
+  - *"Available on weekdays"*
+  - *"Matching working hours (evening)"*
+  - *"Shared interest in AI"*
+  - *"Candidate is currently unavailable for new teams"* (if penalized)
 
-Each positive contribution emits a human-readable reason. For example: “Complementary Frontend + Backend strengths” and “Shared interest in AI.”
+## Performance and Architecture
 
-## Performance and tradeoffs
-
-For `n` candidate users and at most `s` normalized skills/interests per profile, calculation is `O(n × s)` and sorting is `O(n log n)`. The endpoint uses a 60-second per-user in-process cache and clears cached recommendations after a profile update. This avoids recalculation on every frontend render while keeping changes reasonably fresh.
-
-The cache is deliberately simple for the existing single-process architecture. In a horizontally scaled deployment, replace it with Redis and publish profile-update invalidations. At large scale, precompute score features or use database candidate filters before scoring.
-
-This is a transparent heuristic, not a prediction of team success. It cannot assess communication style, schedule, commitment, or unlisted skills, and sparse profiles get lower-quality recommendations. A future ML version could learn weights from accepted requests, successful team outcomes, and user feedback—but should retain explanation and fairness checks.
-
-## Interview explanation
-
-“I kept matching on the server so the score is consistent and cannot be manipulated by the UI. I translate skills into broad roles, reward candidates who cover a missing role much more than candidates who duplicate it, then add smaller signals for shared project interests and compatible experience. The API returns both a 0–100 score and the exact reasons behind it, so users can judge the recommendation instead of trusting a black box.”
+For `n` candidate users and at most `s` normalized skills/interests per profile, calculation is `O(n × s)` and sorting is `O(n log n)`. The endpoint uses a 60-second per-user in-process cache, invalidated whenever a user updates their profile or availability.

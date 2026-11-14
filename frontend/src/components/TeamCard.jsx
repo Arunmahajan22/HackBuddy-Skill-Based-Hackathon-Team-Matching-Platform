@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import { Users, Zap, Check, Shield, ArrowUpRight } from 'lucide-react';
+import { Users, Zap, Check, Shield, ArrowUpRight, MessageCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { cn } from '../lib/utils';
 
 export const TeamCard = memo(function TeamCard({ team, currentUserId, onRequest }) {
@@ -109,14 +110,14 @@ export const TeamCard = memo(function TeamCard({ team, currentUserId, onRequest 
         </div>
 
         {/* Context-aware Action Controls */}
-        {isCreator ? (
-          <span className="inline-flex items-center gap-1 text-xs font-bold text-brand-600 dark:text-brand-400">
-            <Shield size={13} /> Your Team
-          </span>
-        ) : isMember ? (
-          <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-            <Check size={14} /> You're in
-          </span>
+        {isCreator || isMember ? (
+          <Link
+            to={`/chat?team=${team._id}`}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-brand-500/20 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-700 transition hover:bg-brand-500/20 dark:text-brand-300"
+          >
+            <MessageCircle size={13} />
+            <span>Team Chat</span>
+          </Link>
         ) : (
           <button
             type="button"

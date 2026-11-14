@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, AlertCircle, User, Mail, Lock, GraduationCap, Briefcase, Sparkles } from 'lucide-react';
+import { ArrowRight, AlertCircle, User, Mail, Lock, GraduationCap, Briefcase, Sparkles, Calendar } from 'lucide-react';
 import { AuthLayout } from '../components/AuthLayout';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -30,6 +30,8 @@ export default function RegisterPage() {
     github: '',
     skills: '',
     experienceLevel: 'beginner',
+    availabilityStatus: 'open',
+    preferredWorkingHours: '10-20 hrs/week',
   });
   const [error, setError] = useState('');
 
@@ -58,9 +60,22 @@ export default function RegisterPage() {
         .filter(Boolean);
 
       const result = await register({
-        ...form,
+        name: form.name.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        branch: form.branch.trim(),
         year: Number(form.year),
+        bio: form.bio.trim(),
+        github: form.github.trim(),
         skills: skillsArray,
+        experienceLevel: form.experienceLevel,
+        availability: {
+          status: form.availabilityStatus,
+          availableDays: form.availabilityStatus === 'weekends' ? ['Saturday', 'Sunday'] : ['Saturday', 'Sunday'],
+          timeSlots: form.availabilityStatus === 'evenings' ? ['evenings'] : ['evenings'],
+          preferredWorkingHours: form.preferredWorkingHours || '10-20 hrs/week',
+          timezone: 'UTC',
+        },
       });
 
       if (result?.requiresVerification) {
@@ -133,7 +148,7 @@ export default function RegisterPage() {
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label htmlFor="reg-branch" className="field-label">
-              Major / Department *
+              Department / Major *
             </label>
             <div className="relative mt-1">
               <input
@@ -145,7 +160,7 @@ export default function RegisterPage() {
                 onChange={updateField}
                 placeholder="Computer Science"
               />
-              <GraduationCap size={14} className="absolute left-3 top-3 text-slate-400" />
+              <Briefcase size={14} className="absolute left-3 top-3 text-slate-400" />
             </div>
           </div>
 
@@ -153,21 +168,24 @@ export default function RegisterPage() {
             <label htmlFor="reg-year" className="field-label">
               Academic Year *
             </label>
-            <select
-              id="reg-year"
-              className="field-input text-xs"
-              name="year"
-              required
-              value={form.year}
-              onChange={updateField}
-            >
-              <option value="">Select year</option>
-              {[1, 2, 3, 4, 5].map((yr) => (
-                <option key={yr} value={yr}>
-                  Year {yr}
-                </option>
-              ))}
-            </select>
+            <div className="relative mt-1">
+              <select
+                id="reg-year"
+                className="field-input mt-0 pl-9 text-xs"
+                name="year"
+                required
+                value={form.year}
+                onChange={updateField}
+              >
+                <option value="">Select Year</option>
+                {[1, 2, 3, 4, 5].map((yr) => (
+                  <option key={yr} value={yr}>
+                    Year {yr}
+                  </option>
+                ))}
+              </select>
+              <GraduationCap size={14} className="absolute left-3 top-3 text-slate-400" />
+            </div>
           </div>
         </div>
 
@@ -226,6 +244,41 @@ export default function RegisterPage() {
           </div>
         </div>
 
+        {/* Availability */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label htmlFor="reg-availability" className="field-label flex items-center gap-1">
+              <Calendar size={13} /> Availability Status
+            </label>
+            <select
+              id="reg-availability"
+              className="field-input text-xs"
+              name="availabilityStatus"
+              value={form.availabilityStatus}
+              onChange={updateField}
+            >
+              <option value="open">Open to collaborate</option>
+              <option value="weekends">Weekends only</option>
+              <option value="evenings">Evenings only</option>
+              <option value="limited">Limited availability</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="reg-hours" className="field-label">
+              Working Bandwidth
+            </label>
+            <input
+              id="reg-hours"
+              className="field-input text-xs"
+              name="preferredWorkingHours"
+              value={form.preferredWorkingHours}
+              onChange={updateField}
+              placeholder="e.g. 15 hrs/week"
+            />
+          </div>
+        </div>
+
         {/* GitHub URL */}
         <div>
           <label htmlFor="reg-github" className="field-label">
@@ -250,22 +303,22 @@ export default function RegisterPage() {
             'Creating your profile…'
           ) : (
             <>
-              <span>Create Builder Account</span>
-              <ArrowRight size={16} />
+              <span>Join Builder Network</span>
+              <ArrowRight size={14} />
             </>
           )}
         </button>
-      </form>
 
-      <div className="mt-6 border-t border-slate-200/80 pt-5 text-center text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
-        Already a HackBuddy member?{' '}
-        <Link
-          className="font-bold text-brand-600 hover:underline dark:text-brand-400"
-          to="/login"
-        >
-          Sign in to your account →
-        </Link>
-      </div>
+        <p className="pt-2 text-center text-xs text-slate-500 dark:text-slate-400">
+          Already have an account?{' '}
+          <Link
+            to="/login"
+            className="font-semibold text-brand-600 hover:text-brand-500 hover:underline dark:text-brand-400"
+          >
+            Sign in
+          </Link>
+        </p>
+      </form>
     </AuthLayout>
   );
 }

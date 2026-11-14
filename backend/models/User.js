@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const { sanitizeUrl, stripHtml } = require('../utils/sanitize');
 
 const userSchema = new mongoose.Schema(
   {
@@ -10,6 +11,7 @@ const userSchema = new mongoose.Schema(
       trim: true,
       minlength: [2, 'Name must be at least 2 characters.'],
       maxlength: [80, 'Name cannot exceed 80 characters.'],
+      set: (val) => stripHtml(String(val || '')),
     },
     email: {
       type: String,
@@ -30,6 +32,7 @@ const userSchema = new mongoose.Schema(
       required: [true, 'Branch / Department is required.'],
       trim: true,
       maxlength: [100, 'Branch cannot exceed 100 characters.'],
+      set: (val) => stripHtml(String(val || '')),
     },
     year: {
       type: Number,
@@ -42,37 +45,59 @@ const userSchema = new mongoose.Schema(
       trim: true,
       maxlength: [500, 'Bio cannot exceed 500 characters.'],
       default: '',
+      set: (val) => stripHtml(String(val || '')),
     },
     github: {
       type: String,
       trim: true,
       maxlength: [255, 'GitHub URL cannot exceed 255 characters.'],
       default: '',
+      set: (val) => (val ? sanitizeUrl(val) : ''),
     },
-    avatarUrl: { type: String, trim: true, maxlength: [500, 'Avatar URL cannot exceed 500 characters.'], default: '' },
-    linkedin: { type: String, trim: true, maxlength: [255, 'LinkedIn URL cannot exceed 255 characters.'], default: '' },
-    portfolio: { type: String, trim: true, maxlength: [255, 'Portfolio URL cannot exceed 255 characters.'], default: '' },
+    avatarUrl: {
+      type: String,
+      trim: true,
+      maxlength: [500, 'Avatar URL cannot exceed 500 characters.'],
+      default: '',
+      set: (val) => (val ? sanitizeUrl(val) : ''),
+    },
+    linkedin: {
+      type: String,
+      trim: true,
+      maxlength: [255, 'LinkedIn URL cannot exceed 255 characters.'],
+      default: '',
+      set: (val) => (val ? sanitizeUrl(val) : ''),
+    },
+    portfolio: {
+      type: String,
+      trim: true,
+      maxlength: [255, 'Portfolio URL cannot exceed 255 characters.'],
+      default: '',
+      set: (val) => (val ? sanitizeUrl(val) : ''),
+    },
     skills: {
       type: [String],
       default: [],
       set: (skills) =>
         Array.isArray(skills)
-          ? [...new Set(skills.map((skill) => String(skill).trim()).filter(Boolean))]
+          ? [...new Set(skills.map((skill) => stripHtml(String(skill).trim())).filter(Boolean))]
           : [],
     },
     interests: {
       type: [String],
       default: [],
-      set: (interests) => Array.isArray(interests)
-        ? [...new Set(interests.map((interest) => String(interest).trim()).filter(Boolean))]
-        : [],
+      set: (interests) =>
+        Array.isArray(interests)
+          ? [...new Set(interests.map((interest) => stripHtml(String(interest).trim())).filter(Boolean))]
+          : [],
     },
     preferredRoles: {
       type: [String],
       default: [],
-      set: (roles) => Array.isArray(roles)
-        ? [...new Set(roles.map((role) => String(role).trim()).filter(Boolean))]
-        : [],
+      set: (roles) =>
+        Array.isArray(roles)
+          ? [...new Set(roles.map((role) => stripHtml(String(role).trim())).filter(Boolean))]
+          : [],
     },
     experienceLevel: {
       type: String,
@@ -99,15 +124,89 @@ const userSchema = new mongoose.Schema(
       type: Date,
       select: false,
     },
-    hackathonExperience: { type: Number, min: [0, 'Hackathon experience cannot be negative.'], max: [100, 'Hackathon experience is too large.'], default: 0 },
-    availability: { type: String, enum: ['open', 'weekends', 'evenings', 'limited', 'unavailable'], default: 'open' },
-    preferredTeamSize: { type: Number, min: [2, 'Preferred team size must be at least 2.'], max: [20, 'Preferred team size cannot exceed 20.'], default: 4 },
-    projects: [{
-      title: { type: String, required: true, trim: true, maxlength: 100 },
-      description: { type: String, trim: true, maxlength: 500, default: '' },
-      url: { type: String, trim: true, maxlength: 255, default: '' },
-      technologies: { type: [String], default: [] },
-    }],
+    hackathonExperience: {
+      type: Number,
+      min: [0, 'Hackathon experience cannot be negative.'],
+      max: [100, 'Hackathon experience is too large.'],
+      default: 0,
+    },
+    // Comprehensive availability information
+    availability: {
+      status: {
+        type: String,
+        enum: ['open', 'weekends', 'evenings', 'limited', 'unavailable'],
+        default: 'open',
+      },
+      availableDays: {
+        type: [String],
+        default: ['Saturday', 'Sunday'],
+        set: (days) =>
+          Array.isArray(days)
+            ? [...new Set(days.map((d) => stripHtml(String(d).trim())).filter(Boolean))]
+            : ['Saturday', 'Sunday'],
+      },
+      timeSlots: {
+        type: [String],
+        default: ['evenings'],
+        set: (slots) =>
+          Array.isArray(slots)
+            ? [...new Set(slots.map((s) => stripHtml(String(s).trim().toLowerCase())).filter(Boolean))]
+            : ['evenings'],
+      },
+      preferredWorkingHours: {
+        type: String,
+        trim: true,
+        maxlength: [100, 'Preferred working hours cannot exceed 100 characters.'],
+        default: '10-20 hrs/week',
+        set: (val) => stripHtml(String(val || '')),
+      },
+      timezone: {
+        type: String,
+        trim: true,
+        maxlength: [50, 'Timezone cannot exceed 50 characters.'],
+        default: 'UTC',
+        set: (val) => stripHtml(String(val || '')),
+      },
+    },
+    preferredTeamSize: {
+      type: Number,
+      min: [2, 'Preferred team size must be at least 2.'],
+      max: [20, 'Preferred team size cannot exceed 20.'],
+      default: 4,
+    },
+    projects: [
+      {
+        title: {
+          type: String,
+          required: true,
+          trim: true,
+          maxlength: 100,
+          set: (val) => stripHtml(String(val || '')),
+        },
+        description: {
+          type: String,
+          trim: true,
+          maxlength: 500,
+          default: '',
+          set: (val) => stripHtml(String(val || '')),
+        },
+        url: {
+          type: String,
+          trim: true,
+          maxlength: 255,
+          default: '',
+          set: (val) => (val ? sanitizeUrl(val) : ''),
+        },
+        technologies: {
+          type: [String],
+          default: [],
+          set: (techs) =>
+            Array.isArray(techs)
+              ? [...new Set(techs.map((t) => stripHtml(String(t).trim())).filter(Boolean))]
+              : [],
+        },
+      },
+    ],
     // Updated only when the user's final active socket disconnects.
     lastSeen: {
       type: Date,
@@ -128,8 +227,25 @@ const userSchema = new mongoose.Schema(
   },
 );
 
+// Support assigning flat string to availability (e.g. { availability: 'weekends' })
+userSchema.pre('validate', function normalizeAvailability() {
+  if (typeof this.availability === 'string') {
+    const rawStatus = this.availability;
+    this.availability = {
+      status: ['open', 'weekends', 'evenings', 'limited', 'unavailable'].includes(rawStatus)
+        ? rawStatus
+        : 'open',
+      availableDays: rawStatus === 'weekends' ? ['Saturday', 'Sunday'] : ['Saturday', 'Sunday'],
+      timeSlots: rawStatus === 'evenings' ? ['evenings'] : ['evenings'],
+      preferredWorkingHours: '10-20 hrs/week',
+      timezone: 'UTC',
+    };
+  }
+});
+
 // Indexes
 userSchema.index({ skills: 1 });
+userSchema.index({ 'availability.status': 1 });
 
 // Password hashing hook with 12 salt rounds
 userSchema.pre('save', async function hashPassword() {

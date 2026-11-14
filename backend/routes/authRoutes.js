@@ -14,6 +14,7 @@ const { authRateLimiter, resendVerificationLimiter } = require('../middlewares/r
 
 const router = express.Router();
 const experienceLevels = ['beginner', 'intermediate', 'advanced'];
+const availabilityStatusOptions = ['open', 'weekends', 'evenings', 'limited', 'unavailable'];
 
 // Registration route with strict rate limiting & validation
 router.post(
@@ -47,10 +48,11 @@ router.post(
       .isLength({ max: 500 })
       .withMessage('Bio cannot exceed 500 characters.'),
     body('github')
-      .optional()
+      .optional({ checkFalsy: true })
       .trim()
       .isLength({ max: 255 })
-      .withMessage('GitHub URL cannot exceed 255 characters.'),
+      .isURL({ protocols: ['http', 'https'], require_protocol: true })
+      .withMessage('GitHub URL must be a valid http(s) URL.'),
     body('skills')
       .optional()
       .isArray({ max: 50 })
@@ -67,6 +69,23 @@ router.post(
     body('experienceLevel')
       .isIn(experienceLevels)
       .withMessage('Experience level must be beginner, intermediate, or advanced.'),
+    body('availability')
+      .optional()
+      .custom((val) => {
+        if (typeof val === 'string') {
+          if (!availabilityStatusOptions.includes(val)) {
+            throw new Error(`Availability status must be one of: ${availabilityStatusOptions.join(', ')}`);
+          }
+          return true;
+        }
+        if (typeof val === 'object' && val !== null) {
+          if (val.status && !availabilityStatusOptions.includes(val.status)) {
+            throw new Error(`Availability status must be one of: ${availabilityStatusOptions.join(', ')}`);
+          }
+          return true;
+        }
+        throw new Error('Availability must be a string or object.');
+      }),
   ],
   validateRequest,
   register,

@@ -27,23 +27,41 @@ const extractSocketToken = (socket) => {
 };
 
 /**
+ * Parses allowed CORS origins from environment variable.
+ */
+const getAllowedOrigins = () => {
+  const originEnv = process.env.CORS_ORIGIN || 'http://localhost:5173';
+  return originEnv.split(',').map((o) => o.trim()).filter(Boolean);
+};
+
+/**
  * Initializes and configures Socket.IO server with JWT authentication and partitioned rooms.
  */
 const initializeSockets = (httpServer) => {
+  const allowedOrigins = getAllowedOrigins();
+
   const io = new Server(httpServer, {
     cors: {
-      origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+      origin: (origin, callback) => {
+        // Allow mobile/server clients with no origin or matching configured origins
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error('CORS origin denied for WebSocket connection.'));
+        }
+      },
       methods: ['GET', 'POST'],
       credentials: true,
     },
     pingTimeout: 60000,
     pingInterval: 25000,
   });
+
   // Available to REST controllers even before any WebSocket has connected.
   io.isUserOnline = (id) => Boolean(io.sockets.adapter.rooms.get(`user:${id.toString()}`)?.size);
 
-  // Socket Authentication Middleware
-  io.use((socket, next) => {
+  // Socket Authentication & Authorization Middleware
+  io.use(async (socket, next) => {
     try {
       const token = extractSocketToken(socket);
       if (!token) {
@@ -51,7 +69,20 @@ const initializeSockets = (httpServer) => {
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.data.userId = decoded.sub;
+      if (!decoded.sub) {
+        return next(new Error('Malformed authentication token.'));
+      }
+
+      const user = await User.findById(decoded.sub).select('_id isVerified').lean();
+      if (!user) {
+        return next(new Error('User account not found or has been deactivated.'));
+      }
+
+      if (user.isVerified === false) {
+        return next(new Error('Email verification required to access real-time features.'));
+      }
+
+      socket.data.userId = user._id.toString();
       return next();
     } catch (_error) {
       return next(new Error('Invalid or expired authentication token.'));
